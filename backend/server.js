@@ -16,6 +16,11 @@ const upload = multer();
 // Health
 app.get("/health", (req, res) => res.send("OK"));
 
+// Test
+app.get("/test", (req, res) => {
+  res.json({ ok: true, message: "Backend is working!" });
+});
+
 // Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -30,22 +35,15 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
     const file = req.file;
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-    // ------------------------------------------------
-    // 🟢 Получаем расширение файла (даже если имя битое)
-    // ------------------------------------------------
     const ext = file.originalname.includes(".")
       ? file.originalname.split(".").pop()
       : "bin";
 
-    // ------------------------------------------------
-    // 🟢 Генерируем безопасное имя файла
-    // ------------------------------------------------
     const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
     const filePath = `gifts/${safeName}`;
 
     console.log("Uploading:", filePath);
 
-    // Upload to Supabase
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
       .upload(filePath, file.buffer, {
@@ -58,7 +56,6 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       return res.status(500).json({ error: uploadError.message });
     }
 
-    // Gift code
     const code = Math.random().toString(36).substring(2, 10).toUpperCase();
 
     const { data, error } = await supabase
@@ -86,14 +83,13 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
 app.get("/api/get-gift/:code", async (req, res) => {
   const { code } = req.params;
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("gifts")
     .select("*")
     .eq("code", code)
     .single();
 
   if (!data) return res.status(404).json({ error: "Invalid code" });
-
   if (data.is_used) return res.status(400).json({ error: "Code already used" });
 
   const { data: url } = supabase.storage
