@@ -1,6 +1,12 @@
+console.log("ENV KEYS ON RENDER:", Object.keys(process.env));
+console.log("SUPABASE_ANON_KEY:", process.env.SUPABASE_ANON_KEY ? "SET" : "MISSING");
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL ? "SET" : "MISSING");
+
+
 import express from "express";
 import cors from "cors";
 import { supabase } from "./supabaseClient.js";
+
 
 const app = express();
 
