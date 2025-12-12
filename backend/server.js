@@ -13,32 +13,53 @@ app.use(express.json());
 
 const upload = multer();
 
-// Health
+// ======================================================
+// HEALTH
+// ======================================================
 app.get("/health", (req, res) => res.send("OK"));
 
-// Test
-app.get("/test", (req, res) => {
-  res.json({ ok: true, message: "Backend is working!" });
+// ======================================================
+// DEBUG: ПОКАЗАТЬ ВСЕ ENV
+// ======================================================
+app.get("/debug/env", (req, res) => {
+  res.json({
+    SUPABASE_URL: process.env.SUPABASE_URL || "EMPTY",
+    SUPABASE_SERVICE_ROLE_KEY:
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? "LOADED (hidden)"
+        : "EMPTY",
+  });
 });
 
-// Supabase
+// ======================================================
+// SUPABASE CLIENT
+// ======================================================
+console.log("=== ENV CHECK ===");
+console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
+console.log(
+  "SUPABASE_SERVICE_ROLE_KEY exists =",
+  !!process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-/* ==========================================================
-   1) Создание подарка (загрузка + код)
-   ========================================================== */
+// ======================================================
+// 1) CREATE GIFT
+// ======================================================
 app.post("/api/create-gift", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
+    // extension
     const ext = file.originalname.includes(".")
       ? file.originalname.split(".").pop()
       : "bin";
 
+    // safe name
     const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
     const filePath = `gifts/${safeName}`;
 
@@ -48,11 +69,10 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       .from("gift-files")
       .upload(filePath, file.buffer, {
         contentType: file.mimetype,
-        upsert: false
       });
 
     if (uploadError) {
-      console.error(uploadError);
+      console.error("UPLOAD ERROR:", uploadError);
       return res.status(500).json({ error: uploadError.message });
     }
 
@@ -63,27 +83,26 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       .insert({
         code,
         file_path: filePath,
-        is_used: false
+        is_used: false,
       })
       .select("code");
 
     if (error) return res.status(500).json({ error: error.message });
 
     res.json({ success: true, code: data[0].code });
-
   } catch (err) {
-    console.error("Server error:", err);
+    console.error("SERVER ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-/* ==========================================================
-   2) Проверка кода
-   ========================================================== */
+// ======================================================
+// 2) GET GIFT
+// ======================================================
 app.get("/api/get-gift/:code", async (req, res) => {
   const { code } = req.params;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("code", code)
@@ -101,5 +120,8 @@ app.get("/api/get-gift/:code", async (req, res) => {
   res.json({ gift_url: url.publicUrl });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server on ${PORT}`));
+// ======================================================
+// START SERVER
+// ======================================================
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
