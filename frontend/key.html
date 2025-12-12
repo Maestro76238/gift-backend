@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="config.js"></script>
+</head>
+<body>
+
+  <h1>Проверка ключа 🔐</h1>
+
+  <input id="keyInput" type="text" placeholder="Введите ключ" style="padding:10px; font-size:18px;">
+  <br><br>
+
+  <button onclick="checkKey()">Проверить</button>
+
+  <p id="msg" style="color:red"></p>
+
+<script>
+async function checkKey() {
+  const key = document.getElementById("keyInput").value;
+  const res = await fetch(window.API_URL + "/check", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ key }),
+  });
+
+  const data = await res.json();
+
+  if (!data.ok) {
+    document.getElementById("msg").innerText = "Неверный или использованный ключ!";
+    return;
+  }
+
+  localStorage.setItem("gift", JSON.stringify(data.gift));
+  window.location = "gift.html";
+}
+</script>
+
+</body>
+</html>

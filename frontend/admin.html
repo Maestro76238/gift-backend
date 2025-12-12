@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="config.js"></script>
+</head>
+<body>
+
+<h1>Админ панель 🔑</h1>
+
+<input id="pwd" type="password" placeholder="Пароль админа">
+<button onclick="login()">Войти</button>
+
+<div id="panel" style="display:none; margin-top:40px;">
+  <h2>Создать новый ключ</h2>
+
+  <textarea id="gift" placeholder='Например: {"type":"link","value":"https://..."}'
+            style="width:300px;height:80px;"></textarea>
+  <br><br>
+
+  <button onclick="generateKey()">Сгенерировать</button>
+
+  <p id="result"></p>
+</div>
+
+<script>
+
+let adminPassword = null;
+
+async function login() {
+  const password = document.getElementById("pwd").value;
+  const res = await fetch(window.API_URL + "/admin/login", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ password })
+  });
+
+  const data = await res.json();
+
+  if (data.ok) {
+    adminPassword = password;
+    document.getElementById("panel").style.display = "block";
+  } else {
+    alert("Неверный пароль");
+  }
+}
+
+async function generateKey() {
+  const gift = JSON.parse(document.getElementById("gift").value || "{}");
+
+  const res = await fetch(window.API_URL + "/admin/generate", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ password: adminPassword, gift })
+  });
+
+  const data = await res.json();
+
+  if (data.ok) {
+    document.getElementById("result").innerHTML =
+      "Новый ключ: <b>" + data.key + "</b>";
+  } else {
+    alert(JSON.stringify(data));
+  }
+}
+</script>
+
+</body>
+</html>

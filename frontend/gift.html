@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<h1>🎉 Поздравляю! Вот твой подарок 🎁</h1>
+
+<div id="giftBox" style="font-size:20px; margin-top:20px;"></div>
+
+<script>
+const gift = JSON.parse(localStorage.getItem("gift"));
+document.getElementById("giftBox").innerText =
+  gift ? JSON.stringify(gift,null,2) : "Ошибка: нет подарка";
+</script>
+
+</body>
+</html>
