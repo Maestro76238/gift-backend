@@ -10,20 +10,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const upload = multer(); // для загрузки файлов
+const upload = multer();
 
-// Создаём Supabase клиент
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // нужен service-role, иначе не запишет файл
-);
+// ===============================
+// Health-check (Render требует!)
+// ===============================
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
 
-// Проверка
-console.log("Supabase URL:", process.env.SUPABASE_URL);
-console.log("Service key exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+// Простой тест
+app.get("/test", (req, res) => {
+  res.json({ status: "server alive" });
+});
+
+// ===============================
+// Supabase client
+// ===============================
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+console.log("🔗 Supabase URL:", supabaseUrl);
+console.log("🔐 Service key loaded:", !!supabaseKey);
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 /* ==========================================================
-   1) Создание подарка: загрузка файла + генерация кода
+   1) Создание подарка (запись файла + генерация кода)
    ========================================================== */
 app.post("/api/create-gift", upload.single("file"), async (req, res) => {
   try {
@@ -33,10 +46,9 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    // путь для файла
     const filePath = `gifts/${Date.now()}-${file.originalname}`;
 
-    // Загружаем файл в Supabase Storage
+    // Загружаем файл в Storage
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
       .upload(filePath, file.buffer, {
@@ -44,14 +56,14 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       });
 
     if (uploadError) {
-      console.error(uploadError.message);
+      console.error("❌ Upload error:", uploadError.message);
       return res.status(500).json({ error: uploadError.message });
     }
 
-    // Генерируем секретный код
+    // Генерация кода
     const code = Math.random().toString(36).substring(2, 10).toUpperCase();
 
-    // Сохраняем в таблицу gifts
+    // Запись в таблицу
     const { data, error } = await supabase
       .from("gifts")
       .insert({
@@ -62,24 +74,23 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       .select("code");
 
     if (error) {
-      console.error(error.message);
+      console.error("❌ DB error:", error.message);
       return res.status(500).json({ error: error.message });
     }
 
     res.json({ success: true, code: data[0].code });
   } catch (err) {
-    console.error("Server error:", err);
+    console.error("🔥 Server error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* ==========================================================
-   2) Проверка кода + выдача файла (скачивание подарка)
+   2) Проверка кода + выдача подарка
    ========================================================== */
 app.get("/api/get-gift/:code", async (req, res) => {
   const { code } = req.params;
 
-  // Ищем подарок по коду
   const { data, error } = await supabase
     .from("gifts")
     .select("*")
@@ -94,12 +105,12 @@ app.get("/api/get-gift/:code", async (req, res) => {
     return res.status(400).json({ error: "Code already used" });
   }
 
-  // создаём публичную ссылку
+  // Получаем публичную ссылку
   const { data: urlData } = supabase.storage
     .from("gift-files")
     .getPublicUrl(data.file_path);
 
-  // помечаем как использованный
+  // Помечаем как использованный
   await supabase
     .from("gifts")
     .update({ is_used: true })
@@ -109,9 +120,9 @@ app.get("/api/get-gift/:code", async (req, res) => {
 });
 
 /* ==========================================================
-   Запуск сервера
+   3) Запуск сервера
    ========================================================== */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
