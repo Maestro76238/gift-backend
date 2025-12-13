@@ -152,7 +152,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
 import fetch from "node-fetch";
 
 const TG_TOKEN = process.env.TG_BOT_TOKEN;
-const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 
 // webhook endpoint
 app.post("/telegram", async (req, res) => {
