@@ -114,6 +114,11 @@ app.get("/api/get-gift/:code", async (req, res) => {
     }
 
     // ❗️НИКАКОГО update здесь
+await supabase
+      .from("gifts")
+      .update({ is_used: true })
+      .eq("id", data.id);
+
     res.json({
       gift_url: signed.signedUrl,
     });
