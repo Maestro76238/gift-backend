@@ -71,7 +71,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       : "bin";
 
     // ✅ ВАЖНО: ОБРАТНЫЕ КАВЫЧКИ
-    const safeName = ${Date.now()}-${crypto.randomUUID()}.${ext};
+    const safeName = '${Date.now()}-${crypto.randomUUID()}.${ext}';
     const filePath = gifts/${safeName};
 
     const { error: uploadError } = await supabase.storage
