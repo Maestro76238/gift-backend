@@ -58,7 +58,12 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
       return res.status(500).json({ error: uploadError.message });
     }
 
-    const code = crypto.randomUUID().slice(0, 8);
+    const code = crypto
+  .randomUUID()
+  .replace(/-/g, "")
+  .slice(0, 8)
+  .toUpperCase();
+
 
     const { error: dbError } = await supabase.from("gifts").insert({
       code,
