@@ -10,7 +10,7 @@ import crypto from "crypto";
 dotenv.config();
 
 // ===============================
-// FIX __dirname (ESM)
+// __dirname для ESM
 // ===============================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,17 +19,15 @@ const __dirname = path.dirname(__filename);
 // APP
 // ===============================
 const app = express();
-
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json());
 
 // ===============================
-// MULTER (FILES)
+// MULTER
 // ===============================
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 // ===============================
@@ -49,18 +47,18 @@ const supabase = createClient(
 // HEALTH
 // ===============================
 app.get("/health", (req, res) => {
-  res.status(200).send("OK");
+  res.send("OK");
 });
 
 // ===============================
-// ADMIN PANEL (UPLOAD)
+// ADMIN PANEL
 // ===============================
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "upload.html"));
 });
 
 // ===============================
-// UPLOAD FILE + CREATE GIFT
+// UPLOAD + CREATE GIFT
 // ===============================
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
@@ -72,6 +70,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       ? req.file.originalname.split(".").pop()
       : "bin";
 
+    // ✅ ВАЖНО: ОБРАТНЫЕ КАВЫЧКИ
     const safeName = ${Date.now()}-${crypto.randomUUID()}.${ext};
     const filePath = gifts/${safeName};
 
@@ -93,10 +92,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     if (dbError) throw dbError;
 
-    res.json({
-      success: true,
-      code,
-    });
+    res.json({ success: true, code });
   } catch (err) {
     console.error("🔥 UPLOAD ERROR:", err);
     res.status(500).json({ error: err.message });
@@ -104,7 +100,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // ===============================
-// GET GIFT (ONE TIME)
+// GET GIFT (ONE-TIME)
 // ===============================
 app.get("/api/get-gift/:code", async (req, res) => {
   try {
