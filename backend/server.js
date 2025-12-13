@@ -3,9 +3,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// --- fix __dirname for ES modules ---
+// === absolute paths (Render-safe) ===
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -13,17 +13,18 @@ const __dirname = path.dirname(__filename);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// health check
+// health
 app.get("/", (req, res) => {
-  res.json({ status: "ok" });
+  res.send("OK");
 });
 
-// ADMIN PANEL
+// admin panel
 app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "upload.html"));
+  res.sendFile(path.resolve(__dirname, "upload.html"));
 });
 
-// start server
+// start
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("Server started on port", PORT);
+  console.log("Admin path:", path.resolve(__dirname, "upload.html"));
 });
