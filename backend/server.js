@@ -102,7 +102,7 @@ app.get("/api/consume-gift/:code", async (req, res) => {
     .eq("code", code)
     .single();
 
-  if (!data⠟⠵⠵⠺⠞⠵⠺⠞⠺data.is_used) {
+  if (!data || data.is_used) {
     return res.status(400).json({ error: "Invalid or used code" });
   }
 
