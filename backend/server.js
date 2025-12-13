@@ -156,47 +156,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
 // START SERVER
 // ======================================================
 const PORT = process.env.PORT || 10000;
-app.get("/api/download-gift/:code", async (req, res) => {
-  const { code } = req.params;
 
-  const { data, error } = await supabase
-    .from("gifts")
-    .select("*")
-    .eq("code", code)
-    .single();
-
-  if (!data) {
-    return res.status(404).send("Invalid code");
-  }
-
-  if (data.is_used) {
-    return res.status(400).send("Code already used");
-  }
-
-  // Получаем файл
-  const { data: file, error: fileError } = await supabase.storage
-    .from("gift-files")
-    .download(data.file_path);
-
-  if (fileError) {
-    return res.status(500).send("File error");
-  }
-
-  // Помечаем код использованным
-  await supabase
-    .from("gifts")
-    .update({ is_used: true })
-    .eq("id", data.id);
-
-  res.setHeader(
-    "Content-Disposition",
-    attachment; filename="gift"
-  );
-  res.setHeader("Content-Type", "application/octet-stream");
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  res.send(buffer);
-});
 app.listen(PORT, () => {
   console.log(`🚀 Server running on ${PORT}`);
 });
