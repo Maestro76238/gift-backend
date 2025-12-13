@@ -148,60 +148,36 @@ app.post("/api/use-gift/:code", async (req, res) => {
   }
 });
 
-// ================= TELEGRAM BOT =================
-import fetch from "node-fetch";
-
-const TG_TOKEN = process.env.TG_BOT_TOKEN;
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
-
-// webhook endpoint
+// ================= TELEGRAM WEBHOOK =================
 app.post("/telegram", async (req, res) => {
   try {
-    const update = req.body;
+    const msg = req.body.message;
+    if (!msg) return res.sendStatus(200);
 
-    if (!update.message) {
-      return res.sendStatus(200);
-    }
+    const chatId = msg.chat.id;
+    const text = msg.text || "";
 
-    const chatId = update.message.chat.id;
-    const text = update.message.text || "";
+    let reply = "Напиши /start";
 
-    // /start
     if (text === "/start") {
-      await fetch(`${TG_API}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text:
-            "🎁 Добро пожаловать!\n\n" +
-            "Здесь вы можете купить подарочный код.\n\n" +
-            "Нажмите кнопку ниже 👇",
-          reply_markup: {
-            keyboard: [[{ text: "🎟 Купить код" }]],
-            resize_keyboard: true,
-          },
-        }),
-      });
+      reply =
+        "🎁 Добро пожаловать!\n\n" +
+        "Здесь ты сможешь купить код подарка.\n" +
+        "Оплата будет добавлена позже.";
     }
 
-    // Купить код
-    if (text === "🎟 Купить код") {
-      await fetch(`${TG_API}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text:
-            "💳 Оплата скоро будет подключена.\n\n" +
-            "Пока что это тестовый бот.",
-        }),
-      });
-    }
+    await fetch(`${TG_API}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: reply,
+      }),
+    });
 
     res.sendStatus(200);
-  } catch (err) {
-    console.error("TG ERROR:", err);
+  } catch (e) {
+    console.error("TG ERROR:", e);
     res.sendStatus(200);
   }
 });
