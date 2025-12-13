@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 
+// ===== FIX __dirname =====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -27,29 +28,30 @@ app.get("/", (req, res) => {
   res.send("Backend is alive ✅");
 });
 
-// ===== ADMIN =====
+// ===== ADMIN PANEL =====
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "upload.html"));
 });
 
-// ===== UPLOAD =====
+// ===== CREATE GIFT =====
 app.post("/api/create-gift", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file" });
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const ext = req.file.originalname.split(".").pop();
-    const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const ext = path.extname(req.file.originalname);
+    const safeName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
       .upload(safeName, req.file.buffer, {
         contentType: req.file.mimetype,
+        upsert: false,
       });
 
     if (uploadError) {
-      console.error(uploadError);
+      console.error("UPLOAD ERROR:", uploadError);
       return res.status(500).json({ error: uploadError.message });
     }
 
@@ -62,14 +64,14 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
     });
 
     if (dbError) {
-      console.error(dbError);
+      console.error("DB ERROR:", dbError);
       return res.status(500).json({ error: dbError.message });
     }
 
     res.json({ success: true, code });
-  } catch (e) {
-    console.error("UPLOAD ERROR:", e);
-    res.status(500).json({ error: e.message });
+  } catch (err) {
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
