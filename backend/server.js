@@ -4,8 +4,10 @@ import multer from "multer";
 import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
+import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
+// ================== BASE ==================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -13,40 +15,36 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================= SUPABASE =================
+// ================== SUPABASE ==================
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ================= MULTER =================
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50mb
-});
+// ================== MULTER ==================
+const upload = multer({ storage: multer.memoryStorage() });
 
-// ================= HEALTH =================
+// ================== HEALTH ==================
 app.get("/", (req, res) => {
   res.send("Backend is alive ✅");
 });
 
-// ================= ADMIN =================
+// ================== ADMIN ==================
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "upload.html"));
 });
 
-// ================= CREATE GIFT =================
+// ================== CREATE GIFT ==================
 app.post("/api/create-gift", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({ error: "No file" });
     }
 
-    const ext = path.extname(req.file.originalname);
+    const ext = req.file.originalname.split(".").pop();
     const safeName =
-      Date.now().toString() + "-" + crypto.randomUUID() + ext;
+      Date.now() + "-" + crypto.randomUUID() + "." + ext;
 
-    // upload to storage
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
       .upload(safeName, req.file.buffer, {
@@ -59,36 +57,31 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
     }
 
     const code = crypto
-  .randomUUID()
-  .replace(/-/g, "")
-  .slice(0, 8)
-  .toUpperCase();
-
+      .randomUUID()
+      .slice(0, 8)
+      .toUpperCase();
 
     const { error: dbError } = await supabase.from("gifts").insert({
       code,
       file_path: safeName,
-      is_used: false, // ❗️ВАЖНО
+      is_used: false,
     });
 
     if (dbError) {
       return res.status(500).json({ error: dbError.message });
     }
 
-    res.json({
-      success: true,
-      code,
-    });
-  } catch (err) {
-    console.error("CREATE GIFT ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+    res.json({ success: true, code });
+  } catch (e) {
+    console.error("UPLOAD ERROR:", e);
+    res.status(500).json({ error: e.message });
   }
 });
 
-// ================= GET GIFT (CHECK ONLY) =================
+// ================== CHECK GIFT ==================
 app.get("/api/get-gift/:code", async (req, res) => {
   try {
-    const { code } = req.params;
+    const code = req.params.code.toUpperCase();
 
     const { data, error } = await supabase
       .from("gifts")
@@ -96,7 +89,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .eq("code", code)
       .single();
 
-    if (error || !data) {
+    if (!data || error) {
       return res.status(404).json({ error: "Invalid code" });
     }
 
@@ -107,66 +100,48 @@ app.get("/api/get-gift/:code", async (req, res) => {
     const { data: signed, error: signedError } =
       await supabase.storage
         .from("gift-files")
-        .createSignedUrl(data.file_path, 60 * 60 * 24);
+        .createSignedUrl(data.file_path, 60 * 60);
 
     if (signedError) {
       return res.status(500).json({ error: signedError.message });
     }
 
-    // ❗️НИКАКОГО update здесь
-await supabase
+    await supabase
       .from("gifts")
       .update({ is_used: true })
       .eq("id", data.id);
 
-    res.json({
-      gift_url: signed.signedUrl,
-    });
+    res.json({ gift_url: signed.signedUrl });
   } catch (err) {
     console.error("GET GIFT ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ================= MARK AS USED =================
-app.post("/api/use-gift/:code", async (req, res) => {
-  try {
-    const { code } = req.params;
+// ================== TELEGRAM BOT ==================
+const TG_API = "https://api.telegram.org/bot" + process.env.TG_TOKEN;
 
-    const { error } = await supabase
-      .from("gifts")
-      .update({ is_used: true })
-      .eq("code", code);
-
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// ================= TELEGRAM WEBHOOK =================
 app.post("/telegram", async (req, res) => {
   try {
-    const msg = req.body.message;
-    if (!msg) return res.sendStatus(200);
+    console.log("TG UPDATE:", JSON.stringify(req.body));
 
-    const chatId = msg.chat.id;
-    const text = msg.text || "";
+    const message = req.body.message;
+    if (!message) return res.sendStatus(200);
 
-    let reply = "Напиши /start";
+    const chatId = message.chat.id;
+    const text = message.text || "";
+
+    let reply = "🤖 Я жив";
 
     if (text === "/start") {
-      reply =
-        "🎁 Добро пожаловать!\n\n" +
-        "Здесь ты сможешь купить код подарка.\n" +
-        "Оплата будет добавлена позже.";
+      reply = "🎄 Добро пожаловать!\n\nНапиши /buy чтобы получить подарок 🎁";
     }
 
-    await fetch(`${TG_API}/sendMessage`, {
+    if (text === "/buy") {
+      reply = "💳 Продажа скоро будет подключена.\nПока тестовый режим.";
+    }
+
+    await fetch(TG_API + "/sendMessage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -182,7 +157,7 @@ app.post("/telegram", async (req, res) => {
   }
 });
 
-// ================= START =================
+// ================== START ==================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
