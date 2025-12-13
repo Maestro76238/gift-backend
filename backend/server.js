@@ -1,111 +1,79 @@
 import express from "express";
 import cors from "cors";
-import multer from "multer";
 import dotenv from "dotenv";
-import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
+const app = express();
 
-// 🔹 нужно для ES modules
+// ======================================================
+// PATH SETUP (ESM)
+// ======================================================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ======================================================
-// ADMIN PANEL
+// MIDDLEWARE
 // ======================================================
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "upload.html"));
-});
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-const upload = multer();
-
-// ===============================
-// __dirname для ESM
-// ===============================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ===============================
-// HEALTH
-// ===============================
-app.get("/health", (req, res) => {
-  res.send("OK");
-});
-
-// ===============================
-// ADMIN PANEL
-// ===============================
-app.get("/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "upload.html"));
-});
-
-// ===============================
+// ======================================================
 // SUPABASE
-// ===============================
+// ======================================================
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ===============================
-// CREATE GIFT (UPLOAD)
-// ===============================
-app.post("/api/create-gift", upload.single("file"), async (req, res) => {
+// ======================================================
+// HEALTH CHECK
+// ======================================================
+app.get("/", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+// ======================================================
+// ADMIN PANEL (UPLOAD)
+// ======================================================
+app.use("/admin", express.static(path.join(__dirname, "upload")));
+
+// ======================================================
+// CREATE GIFT (ADMIN)
+// ======================================================
+app.post("/api/create-gift", async (req, res) => {
   try {
-    const file = req.file;
-    if (!file) {
-      return res.status(400).json({ error: "No file uploaded" });
+    const { code, file_path } = req.body;
+
+    if (!code || !file_path) {
+      return res.status(400).json({ error: "Missing code or file_path" });
     }
 
-    const ext = file.originalname.includes(".")
-      ? file.originalname.split(".").pop()
-      : "bin";
-
-    const fileName = ${Date.now()}-${crypto.randomUUID()}.${ext};
-    const filePath = gifts/${fileName};
-
-    const { error: uploadError } = await supabase.storage
-      .from("gift-files")
-      .upload(filePath, file.buffer, {
-        contentType: file.mimetype,
-      });
-
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
-      return res.status(500).json({ error: uploadError.message });
-    }
-
-    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-
-    const { error: dbError } = await supabase
-      .from("gifts")
-      .insert({
+    const { error } = await supabase.from("gifts").insert([
+      {
         code,
-        file_path: filePath,
+        file_path,
         is_used: false,
-      });
+      },
+    ]);
 
-    if (dbError) {
-      console.error("DB error:", dbError);
-      return res.status(500).json({ error: dbError.message });
+    if (error) {
+      return res.status(500).json({ error: error.message });
     }
 
-    res.json({ success: true, code });
+    res.json({ success: true });
   } catch (err) {
-    console.error("Create gift error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ===============================
-// GET GIFT (ONE TIME)
-// ===============================
+// ======================================================
+// GET GIFT (USER)
+// ======================================================
 app.get("/api/get-gift/:code", async (req, res) => {
   try {
     const { code } = req.params;
@@ -116,7 +84,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .eq("code", code)
       .single();
 
-    if (!data || error) {
+    if (error || !data) {
       return res.status(404).json({ error: "Invalid code" });
     }
 
@@ -130,7 +98,6 @@ app.get("/api/get-gift/:code", async (req, res) => {
         .createSignedUrl(data.file_path, 60 * 60 * 24);
 
     if (signedError) {
-      console.error("Signed URL error:", signedError);
       return res.status(500).json({ error: signedError.message });
     }
 
@@ -139,17 +106,18 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .update({ is_used: true })
       .eq("id", data.id);
 
-    res.json({ gift_url: signed.signedUrl });
+    res.json({
+      gift_url: signed.signedUrl,
+    });
   } catch (err) {
-    console.error("Get gift error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ===============================
+// ======================================================
 // START SERVER
-// ===============================
+// ======================================================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log("🚀 Server running on port", PORT);
 });
