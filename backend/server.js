@@ -72,7 +72,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     // ✅ ВАЖНО: ОБРАТНЫЕ КАВЫЧКИ
     const safeName = '${Date.now()}-${crypto.randomUUID()}.${ext}';
-    const filePath = gifts/${safeName};
+    const filePath = gifts/'${safeName}';
 
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
