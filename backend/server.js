@@ -148,6 +148,64 @@ app.post("/api/use-gift/:code", async (req, res) => {
   }
 });
 
+// ================= TELEGRAM BOT =================
+import fetch from "node-fetch";
+
+const TG_TOKEN = process.env.TG_BOT_TOKEN;
+const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+
+// webhook endpoint
+app.post("/telegram", async (req, res) => {
+  try {
+    const update = req.body;
+
+    if (!update.message) {
+      return res.sendStatus(200);
+    }
+
+    const chatId = update.message.chat.id;
+    const text = update.message.text || "";
+
+    // /start
+    if (text === "/start") {
+      await fetch(`${TG_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text:
+            "🎁 Добро пожаловать!\n\n" +
+            "Здесь вы можете купить подарочный код.\n\n" +
+            "Нажмите кнопку ниже 👇",
+          reply_markup: {
+            keyboard: [[{ text: "🎟 Купить код" }]],
+            resize_keyboard: true,
+          },
+        }),
+      });
+    }
+
+    // Купить код
+    if (text === "🎟 Купить код") {
+      await fetch(`${TG_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text:
+            "💳 Оплата скоро будет подключена.\n\n" +
+            "Пока что это тестовый бот.",
+        }),
+      });
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("TG ERROR:", err);
+    res.sendStatus(200);
+  }
+});
+
 // ================= START =================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
