@@ -9,42 +9,46 @@ dotenv.config();
 
 const app = express();
 
-// ======================================================
-// PATH SETUP (ESM)
-// ======================================================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ======================================================
-// MIDDLEWARE
-// ======================================================
+/* =========================
+   BASE SETUP
+========================= */
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ======================================================
-// SUPABASE
-// ======================================================
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// ======================================================
-// HEALTH CHECK
-// ======================================================
+/* =========================
+   SUPABASE
+========================= */
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("❌ Supabase env vars missing");
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+/* =========================
+   HEALTH CHECK
+========================= */
 app.get("/", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ======================================================
-// ADMIN PANEL (UPLOAD)
-// ======================================================
-app.use("/admin", express.static(path.join(__dirname, "upload")));
+/* =========================
+   ADMIN PANEL
+========================= */
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "upload.html"));
+});
 
-// ======================================================
-// CREATE GIFT (ADMIN)
-// ======================================================
+/* =========================
+   CREATE GIFT
+========================= */
 app.post("/api/create-gift", async (req, res) => {
   try {
     const { code, file_path } = req.body;
@@ -67,13 +71,14 @@ app.post("/api/create-gift", async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
+    console.error("🔥 create-gift error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ======================================================
-// GET GIFT (USER)
-// ======================================================
+/* =========================
+   GET GIFT (ONE TIME)
+========================= */
 app.get("/api/get-gift/:code", async (req, res) => {
   try {
     const { code } = req.params;
@@ -84,7 +89,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .eq("code", code)
       .single();
 
-    if (error || !data) {
+    if (!data || error) {
       return res.status(404).json({ error: "Invalid code" });
     }
 
@@ -106,18 +111,18 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .update({ is_used: true })
       .eq("id", data.id);
 
-    res.json({
-      gift_url: signed.signedUrl,
-    });
+    res.json({ gift_url: signed.signedUrl });
   } catch (err) {
+    console.error("🔥 get-gift error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ======================================================
-// START SERVER
-// ======================================================
+/* =========================
+   START SERVER
+========================= */
 const PORT = process.env.PORT || 10000;
+
 app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
+  console.log(`🚀 Server running on ${PORT}`);
 });
