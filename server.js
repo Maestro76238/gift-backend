@@ -10,6 +10,19 @@ import { createClient } from "@supabase/supabase-js";
 dotenv.config();
 
 const app = express();
+import path from "path";
+import { fileURLToPath } from "url";
+
+// 🔹 нужно для ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ======================================================
+// ADMIN PANEL
+// ======================================================
+app.get("/admin", (req, res) => {
+  res.sendFile(path.join(__dirname, "upload.html"));
+});
 app.use(cors());
 app.use(express.json());
 
