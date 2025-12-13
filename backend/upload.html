@@ -85,7 +85,7 @@
       result.innerText = "⏳ Загрузка...";
 
       try {
-        const res = await fetch("/api/create-gift", {
+        const res = await fetch("https://gift-backend-tn9w.onrender.com/api/create-gift", {
           method: "POST",
           body: formData
         });
