@@ -124,7 +124,7 @@ app.get("/api/download/:code", async (req, res) => {
       .eq("code", code)
       .single();
 
-    if (!data⠺⠵⠺⠟⠞⠵⠺⠟⠺data.is_used) {
+    if (!data || data.is_used) {
       return res.status(400).send("Invalid or used code");
     }
 
