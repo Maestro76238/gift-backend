@@ -252,7 +252,7 @@ app.post("/telegram", async (req, res) => {
 
 
 
-     if (cb.data === "BUY") {
+    if (cb.data === "BUY") {
   const paymentId = crypto.randomUUID();
 
   const payUrl =
@@ -271,15 +271,22 @@ app.post("/telegram", async (req, res) => {
     status: "pending",
   });
 
-  await fetch(`${TG_API}/sendMessage`, {
+  // ❗ ГЛАВНОЕ — РЕДАКТИРУЕМ СООБЩЕНИЕ
+  await fetch(`${TG_API}/editMessageText`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: chatId,
-      text: "💳 Оплатите ключ по кнопке ниже 👇",
+      message_id: cb.message.message_id,
+      text: "💳 Оплатите секретный ключ 👇",
       reply_markup: {
         inline_keyboard: [
-          [{ text: "💰 Оплатить 100 ₽", url: payUrl }],
+          [
+            {
+              text: "💰 Оплатить 100 ₽",
+              url: payUrl,
+            },
+          ],
         ],
       },
     }),
@@ -294,7 +301,6 @@ app.post("/telegram", async (req, res) => {
       .eq("status", "pending");
   }, 5 * 60 * 1000);
 }
-
 
 
 
