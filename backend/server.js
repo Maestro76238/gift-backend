@@ -122,6 +122,98 @@ app.get("/api/get-gift/:code", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ================== TELEGRAM BOT ==================
+const TG_TOKEN = process.env.TG_TOKEN;
+const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+
+// helper
+async function tg(method, body) {
+  await fetch(`${TG_API}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// webhook
+app.post("/tg", async (req, res) => {
+  const update = req.body;
+  console.log("📩 TG UPDATE:", JSON.stringify(update));
+  res.sendStatus(200);
+
+  // ===== /start =====
+  if (update.message?.text === "/start") {
+    await tg("sendMessage", {
+      chat_id: update.message.chat.id,
+      text:
+        "🎄 С наступающим Новым годом!\n\n" +
+        "Здесь вы можете купить секретный ключ 🔑\n" +
+        "и открыть свой подарок 🎁\n\n" +
+        "Выберите действие 👇",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
+          [{ text: "🔑 Купить секретный ключ", callback_data: "BUY" }],
+        ],
+      },
+    });
+  }
+
+  // ===== CALLBACKS =====
+  if (update.callback_query) {
+    const chatId = update.callback_query.message.chat.id;
+    const data = update.callback_query.data;
+
+    // INFO
+    if (data === "INFO") {
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text:
+          "Данный бот позволяет вам купить секретный ключ 🔑\n" +
+          "всего за 100 рублей и открыть свой новогодний подарок 🎁\n\n" +
+          "❗ Важно:\n" +
+          "Код одноразовый.\n" +
+          "После открытия подарка он сгорает 🔥",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔙 Назад", callback_data: "BACK" }],
+          ],
+        },
+      });
+    }
+
+    // BUY
+    if (data === "BUY") {
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text:
+          "💳 Покупка секретного ключа\n\n" +
+          "Оплата будет доступна чуть позже.",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🔙 Назад", callback_data: "BACK" }],
+          ],
+        },
+      });
+    }
+
+    // BACK
+    if (data === "BACK") {
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text:
+          "🎄 С наступающим Новым годом!\n\n" +
+          "Выберите действие 👇",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
+            [{ text: "🔑 Купить секретный ключ", callback_data: "BUY" }],
+          ],
+        },
+      });
+    }
+  }
+});
 
 // ===== START =====
 const PORT = process.env.PORT || 10000;
