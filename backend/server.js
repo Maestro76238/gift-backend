@@ -111,7 +111,7 @@ app.post("/telegram", async (req, res) => {
       status: "pending",
     });
 
-const payUrl = `https://yoomoney.ru/quickpay/quickpay
+const payUrl = `https://yoomoney.ru/quickpay/quickpay-form.html
 ?quickpay-form=shop
 &receiver=${process.env.YOOMONEY_WALLET}
 &paymentType=AC
