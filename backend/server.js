@@ -249,26 +249,105 @@ app.post("/telegram", async (req, res) => {
       }
 
       // ===== BUY =====
-      if (data === "BUY") {
-        await fetch(`${TG_API}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: "💳 Оплатите ключ по кнопке ниже 👇",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "💰 Оплатить 100₽",
-                    url: "https://yoomoney.ru/", // ВРЕМЕННО
-                  },
-                ],
-              ],
-            },
-          }),
-        });
-      }
+
+
+
+     if (cb.data === "BUY") {
+  const paymentId = crypto.randomUUID();
+
+  const payUrl =
+    "https://yoomoney.ru/quickpay/confirm.xml" +
+    "?receiver=" + process.env.YOOMONEY_WALLET +
+    "&quickpay-form=button" +
+    "&paymentType=AC" +
+    "&sum=100" +
+    "&label=" + paymentId;
+
+  // сохраняем платёж
+  await supabase.from("payments").insert({
+    id: paymentId,
+    tg_id: chatId,
+    amount: 100,
+    status: "pending",
+  });
+
+  await fetch(`${TG_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: "💳 Оплатите ключ по кнопке ниже 👇",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "💰 Оплатить 100 ₽", url: payUrl }],
+        ],
+      },
+    }),
+  });
+
+  // авто-сгорание через 5 минут
+  setTimeout(async () => {
+    await supabase
+      .from("payments")
+      .update({ status: "expired" })
+      .eq("id", paymentId)
+      .eq("status", "pending");
+  }, 5 * 60 * 1000);
+}
+
+
+
+
+app.post("/yoomoney", express.urlencoded({ extended: true }), async (req, res) => {
+  const { label, amount } = req.body;
+
+  if (!label) return res.send("ok");
+
+  const { data } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("id", label)
+    .single();
+
+  if (!data || data.status !== "pending") return res.send("ok");
+
+  // генерируем КОД
+  const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+  await supabase.from("payments").update({
+    status: "paid",
+    code,
+  }).eq("id", label);
+
+  await supabase.from("gifts").insert({
+    code,
+    is_used: false,
+  });
+
+  // отправка пользователю
+  await fetch(`${TG_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: data.tg_id,
+      text: 🎉 Оплата прошла успешно!\n\nВаш секретный ключ:\n\n🔑 *${code}*,
+      parse_mode: "Markdown",
+    }),
+  });
+
+  // уведомление админу
+  await fetch(`${TG_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: process.env.ADMIN_TG_ID,
+      text: 💰 Новый платёж\nСумма: 100 ₽\nКод: ${code},
+    }),
+  });
+
+  res.send("ok");
+});
+
 
       // ===== SUPPORT =====
       if (data === "SUPPORT") {
