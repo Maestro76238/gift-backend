@@ -25,7 +25,7 @@ const supabase = createClient(
 );
 
 // ================== TELEGRAM ==================
-const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 
 async function tgSend(chatId, text, replyMarkup = null) {
   const body = {
