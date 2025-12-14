@@ -152,81 +152,50 @@ app.post("/tg", async (req, res) => {
 });
 
 // ================== YOOKASSA WEBHOOK ==================
-app.post(
-  "/yookassa",
-  async (req, res) => {
-    try {
-      const event = req.body;
-      console.log("YOOKASSA WEBHOOK:", JSON.stringify(event, null, 2));
+app.post("/yookassa", async (req, res) => {
+  try {
+    const event = req.body;
 
-      if (event.event === "payment.succeeded") {
-	const payment = event.object;
-      }
+    console.log("📩 YOOKASSA WEBHOOK:", JSON.stringify(event, null, 2));
 
-      const orderId = payment.metadata.order_id;
-      const tgId = payment.metadata.tg_id;
-
-      if (!paymentId || !orderId || !tgId) {
-	console.error("Missing metadata");
-        return res.send("OK");
-      }
-
- 
-      // ===== ЗАЩИТА ОТ ДУБЛЯ =======
-      const { data: alreadyProcessed } = await supabase
-        .from("orders")
-	.select("id")
-	.eq("payment_id", paymentId)
-	.maybeSingle();
-
-      if (alreadyProcessed) {
-        console.log("🔁 Duplicate webhook ignored:", paymentId);
-        return res.send("ok");
-      }
-
-      // ====== ГЕНЕРАЦИЯ КОДА ======
-      const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-      await supabase.from("gifts").insert({
-        code,
-        is_used: false,
-      });
-
-      // ====== ОБНОВЛЯЕМ ЗАКАЗ ======
-      await supabase
-        .from("orders")
-        .update({
-          status: "paid",
-          payment_id: paymentId,
-        })
-        .eq("id", orderId);
-
-      // ====== УВЕДОМЛЯЕМ ПОКУПАТЕЛЯ ======
-      await tgSend(
-        tgId,
-        "✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>" +
-          code +
-          "</code>"
-      );
-
-      // ====== УВЕДОМЛЯЕМ АДМИНА ======
-      await tgSend(
-        ADMIN_TG_ID,
-        "💰 <b>Новая покупка</b>\n\nTG ID: " +
-          tgId +
-          "\nКод: <code>" +
-          code +
-          "</code>"
-      );
-
-      res.send("ok");
-    } catch (e) {
-      console.error("❌ YOOKASSA ERROR:", e);
-      res.send("ok");
+    if (event.event !== "payment.succeeded") {
+      return res.send("ok");
     }
-  }
-);
 
+    // 🔥 ВАЖНО: объявляем ЗДЕСЬ
+    const payment = event.object;
+
+    const orderId = payment.metadata.order_id;
+    const tgId = payment.metadata.tg_id;
+
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    await supabase.from("gifts").insert({
+      code,
+      is_used: false,
+    });
+
+    await supabase
+      .from("orders")
+      .update({ status: "paid" })
+      .eq("id", orderId);
+
+    await tgSend(
+      tgId,
+      "✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>" + code + "</code>"
+    );
+
+    await tgSend(
+      ADMIN_TG_ID,
+      "💰 Новая покупка\nTG ID: " + tgId + "\nКод: " + code
+    );
+
+    res.send("ok");
+  } catch (e) {
+    console.error("❌ YOOKASSA ERROR:", e);
+    res.send("ok");
+  }
+});
 // ================== START ==================
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
