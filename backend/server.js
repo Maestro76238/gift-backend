@@ -330,7 +330,7 @@ app.post("/yoomoney", express.urlencoded({ extended: true }), async (req, res) =
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: data.tg_id,
-      text: 🎉 Оплата прошла успешно!\n\nВаш секретный ключ:\n\n🔑 *${code}*,
+      text: `🎉 Оплата прошла успешно!\n\nВаш секретный ключ:\n\n🔑 *${code}*`,
       parse_mode: "Markdown",
     }),
   });
