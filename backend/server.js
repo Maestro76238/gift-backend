@@ -152,7 +152,7 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file" });
 
     const ext = req.file.originalname.split(".").pop();
-    const safeName = ${Date.now()}-${crypto.randomUUID()}.${ext};
+    const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
