@@ -111,15 +111,14 @@ app.post("/telegram", async (req, res) => {
       status: "pending",
     });
 
-    const payUrl =
-  "https://yoomoney.ru/quickpay/quickpay" +
-  "?quickpay-form=shop" +
-  &receiver=${process.env.YOOMONEY_WALLET} +
-  "&paymentType=AC" +
-  "&sum=100" +
-  "&targets=Покупка подарочного кода" +
-  &label=${orderId} +
-  "&successURL=" + encodeURIComponent(process.env.BASE_URL);
+const payUrl = `https://yoomoney.ru/quickpay/quickpay
+?quickpay-form=shop
+&receiver=${process.env.YOOMONEY_WALLET}
+&paymentType=AC
+&sum=100
+&targets=Покупка подарочного кода
+&label=${orderId}
+&successURL=${encodeURIComponent(process.env.BASE_URL)}`.replace(/\n/g, "");
 
     await tgSend(chatId, `💳 Оплатите:\n${payUrl}`);
   }
