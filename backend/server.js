@@ -7,8 +7,12 @@ import { createClient } from "@supabase/supabase-js";
 
 // ================== APP ==================
 const app = express();
-app.use(cors());
 app.use(express.json());
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
+
 
 // ================== ENV ==================
 const PORT = process.env.PORT || 10000;
@@ -153,8 +157,8 @@ app.post("/tg", async (req, res) => {
 
 // ================== YOOKASSA WEBHOOK ==================
 app.post(
-  "/youkassa",
-  bodyParser.raw({ tyoe: "application/json" }),
+  "/yookassa",
+  bodyParser.raw({ type: "application/json" }),
   async (req, res) => {
     try {
       const rawBody = req.body.toString("utf8");
