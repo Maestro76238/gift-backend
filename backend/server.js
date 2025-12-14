@@ -7,7 +7,7 @@ app.use(express.json());
 // ====== ENV ======
 const TG_TOKEN = process.env.TG_TOKEN;
 const ADMIN_TG_ID = process.env.ADMIN_TG_ID; // пока не используется
-const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 
 // ====== HELPERS ======
 async function sendMessage(chatId, text, keyboard = null) {
