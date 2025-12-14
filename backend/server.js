@@ -156,16 +156,15 @@ app.post(
   "/yookassa",
   async (req, res) => {
     try {
+      const event = req.body;
       console.log("YOOKASSA WEBHOOK:", JSON.stringify(event, null, 2));
 
-      if (event.event !== "payment.succeeded") {
-	return res.send("OK");
+      if (event.event === "payment.succeeded") {
+	const payment = event.object;
       }
 
-      const payment = event.object;
-      const paymentId = payment.id;
-      const orderId = payment.metadata?.order_id;
-      const tgId = payment.metadata?.tg_id;
+      const orderId = payment.metadata.order_id;
+      const tgId = payment.metadata.tg_id;
 
       if (!paymentId || !orderId || !tgId) {
 	console.error("Missing metadata");
