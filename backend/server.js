@@ -67,78 +67,94 @@ app.post("/tg", async (req, res) => {
 
         // --- BUTTONS ---
         if (update.callback_query) {
-            const chatId = update.callback_query.message.chat.id;
-            const data = update.callback_query.data;
+            const cb = update.callback_query;
 
-            if (data === "INFO") {
-                await sendMessage(
-                    chatId,
-                    "ℹ️ <b>Как это работает</b>\n\n" +
-                    "1️⃣ Вы покупаете секретный ключ 🔑\n" +
-                    "2️⃣ Вводите его на сайте\n" +
-                    "3️⃣ Открывается ваш подарок 🎁\n\n" +
-                    "⚠️ Код одноразовый и сгорает после использования",
-                    backKeyboard
-                );
+            const chatId =
+                cb.message?.chat?.id || cb.from.id; // 🔥 ГЛАВНЫЙ ФИКС
+
+            const data = cb.data;
+
+            if (!chatId) {
+                console.log("❌ No chatId in callback");
+                return res.send("OK");
             }
 
-            if (data === "BUY") {
-                // проверяем, есть ли активный код
-                const {data: active} = await supabase
-                    .from("orders")
-                    .select("*")
-                    .eq("tg_id", chatId)
-                    .eq("status", "pending")
-                    .maybeSingle();
-
-                if (active) {
-                    return send(chatId, "❌ У вас уже есть активный неоплаченный код");
-                }
-
-                const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-                const {data: order} = await supabase
-                    .from("orders")
-                    .insert({
-                        tg_id: chatId,
-                        code,
-                        amount: PRICE,
-                        status: "pending",
-                    })
-                    .select()
-                    .single();
-
-                // авто-сгорание через 5 минут
-                setTimeout(async () => {
-                    await supabase
-                        .from("orders")
-                        .update({status: "expired"})
-                        .eq("id", order.id)
-                        .eq("status", "pending");
-                }, CODE_TTL_MINUTES * 60 * 1000);
-
-                const payUrl = createPayLink(order.id);
-
-                await send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
-                    inline_keyboard: [[{text: "💰 Оплатить", url: payUrl}]],
-                });
-            }
-
-            if (data === "BACK") {
-                await sendMessage(
-                    chatId,
-                    "Выберите действие 👇",
-                    mainKeyboard
-                );
-            }
+            // дальше логика BUY / INFO
         }
 
-        res.send("OK");
-    } catch (e) {
-        console.error("TG ERROR:", e);
-        res.send("ERROR");
+        if (data === "INFO") {
+            await sendMessage(
+                chatId,
+                "ℹ️ <b>Как это работает</b>\n\n" +
+                "1️⃣ Вы покупаете секретный ключ 🔑\n" +
+                "2️⃣ Вводите его на сайте\n" +
+                "3️⃣ Открывается ваш подарок 🎁\n\n" +
+                "⚠️ Код одноразовый и сгорает после использования",
+                backKeyboard
+            );
+        }
+
+        if (data === "BUY") {
+            // проверяем, есть ли активный код
+            const {data: active} = await supabase
+                .from("orders")
+                .select("*")
+                .eq("tg_id", chatId)
+                .eq("status", "pending")
+                .maybeSingle();
+
+            if (active) {
+                return send(chatId, "❌ У вас уже есть активный неоплаченный код");
+            }
+
+            const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+            const {data: order} = await supabase
+                .from("orders")
+                .insert({
+                    tg_id: chatId,
+                    code,
+                    amount: PRICE,
+                    status: "pending",
+                })
+                .select()
+                .maybeSingle();
+
+            // авто-сгорание через 5 минут
+            setTimeout(async () => {
+                await supabase
+                    .from("orders")
+                    .update({status: "expired"})
+                    .eq("id", order.id)
+                    .eq("status", "pending");
+            }, CODE_TTL_MINUTES * 60 * 1000);
+
+            const payUrl = createPayLink(order.id);
+
+            await send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
+                inline_keyboard: [[{text: "💰 Оплатить", url: payUrl}]],
+            });
+        }
+
+        if (data === "BACK") {
+            await sendMessage(
+                chatId,
+                "Выберите действие 👇",
+                mainKeyboard
+            );
+        }
     }
-});
+
+    res.send("OK");
+}
+catch
+(e)
+{
+    console.error("TG ERROR:", e);
+    res.send("ERROR");
+}
+})
+;
 
 // ====== HEALTH ======
 app.get("/", (req, res) => {
