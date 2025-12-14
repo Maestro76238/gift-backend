@@ -2,6 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
 import cors from "cors";
+import bodyParser from "body-parser";
 import { createClient } from "@supabase/supabase-js";
 
 // ================== APP ==================
