@@ -11,7 +11,7 @@ app.use(express.json());
   verify: (req, res, buf) => {
     req.rawBody = buf.toString();
   
-});
+};
 
 
 // ================== ENV ==================
