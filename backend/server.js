@@ -155,104 +155,72 @@ async function tg(method, body) {
 
 // webhook
 app.post("/tg", async (req, res) => {
-  const update = req.body;
-  console.log("📩 TG UPDATE:", JSON.stringify(update));
-  res.sendStatus(200);
+  try {
+    const update = req.body;
 
-  // ===== /start =====
-  if (update.message?.text === "/start") {
-    await tg("sendMessage", {
-      chat_id: update.message.chat.id,
-      text:
-        "🎄 С наступающим Новым годом!\n\n" +
-        "Здесь вы можете купить секретный ключ 🔑\n" +
-        "и открыть свой подарок 🎁\n\n" +
-        "Выберите действие 👇",
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
-          [{ text: "🔑 Купить секретный ключ", callback_data: "BUY" }],
-        ],
-      },
-    });
-  }
+    console.log("📩 TG UPDATE:", JSON.stringify(update));
 
-  // ===== CALLBACKS =====
-  if (update.callback_query) {
-    const chatId = update.callback_query.message.chat.id;
-    const data = update.callback_query.data;
+    // ===== CALLBACK BUTTONS =====
+    if (update.callback_query) {
+      const chatId = update.callback_query.message.chat.id;
+      const data = update.callback_query.data;
 
-    // INFO
-    if (data === "INFO") {
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text:
-          "Данный бот позволяет вам купить секретный ключ 🔑\n" +
-          "всего за 100 рублей и открыть свой новогодний подарок 🎁\n\n" +
-          "❗ Важно:\n" +
-          "Код одноразовый.\n" +
-          "После открытия подарка он сгорает 🔥",
-        reply_markup: {
+      // ❗ ОБЯЗАТЕЛЬНО отвечаем Telegram
+      res.sendStatus(200);
+
+      if (data === "INFO") {
+        await send(
+          chatId,
+          "ℹ️ <b>Как это работает?</b>\n\n" +
+            "Вы покупаете секретный ключ 🔑 за 1 рубль,\n" +
+            "вводите его на сайте и открываете подарок 🎁\n\n" +
+            "❗ Код одноразовый и сгорает после использования 🔥"
+        );
+      }
+
+      if (data === "BUY") {
+        const paymentUrl =
+          `"https://yoomoney.ru/quickpay/confirm.xml" +
+          "?receiver=" + process.env.YOOMONEY_WALLET +
+          "&quickpay-form=shop" +
+          "&targets=Секретный ключ" +
+          "&paymentType=AC" +
+          "&sum=1" +
+          "&label=" + update.callback_query.from.id`;
+
+        await send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
           inline_keyboard: [
-            [{ text: "🔙 Назад", callback_data: "BACK" }],
+            [{ text: "💰 Оплатить 1 ₽", url: paymentUrl }],
           ],
-        },
-      });
+        });
+      }
+
+      return;
     }
 
-    // BUY
-    if (data === "BUY") {
-  // проверка активного кода
-  const { data: activeGift } = await supabase
-    .from("gifts")
-    .select("id")
-    .eq("tg_user_id", chatId)
-    .eq("is_used", false)
-    .maybeSingle();
+    // ===== /start =====
+    if (update.message?.text === "/start") {
+      const chatId = update.message.chat.id;
 
-  if (activeGift) {
-    return send(chatId, "❗ У вас уже есть активный ключ. Сначала используйте его.");
-  }
-
-  const paymentId = crypto.randomUUID();
-
-  await supabase.from("payments").insert({
-    tg_user_id: chatId,
-    payment_id: paymentId,
-    amount: 100,
-    status: "pending"
-  });
-const paymentUrl =
-  `"https://yoomoney.ru/quickpay/confirm.xml" +
-  "?receiver=" + process.env.YOOMONEY_WALLET +
-  "&quickpay-form=shop" +
-  "&targets=Секретный ключ" +
-  "&paymentType=AC" +
-  "&sum=1" +
-  "&label=" + orderId`;
-
-  send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
-    inline_keyboard: [[
-      { text: "💳 Оплатить 1 ₽", url: paymentUrl }
-    ]]
-  });
-}
-
-    // BACK
-    if (data === "BACK") {
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text:
-          "🎄 С наступающим Новым годом!\n\n" +
+      await send(
+        chatId,
+        "🎄 <b>С наступающим Новым годом!</b>\n\n" +
+          "Здесь вы можете купить секретный ключ 🔑\n" +
+          "и открыть свой подарок 🎁\n\n" +
           "Выберите действие 👇",
-        reply_markup: {
+        {
           inline_keyboard: [
             [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
             [{ text: "🔑 Купить секретный ключ", callback_data: "BUY" }],
           ],
-        },
-      });
+        }
+      );
     }
+
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("TG ERROR:", e);
+    res.sendStatus(200); // ❗ НЕ ЛОМАЕМ ВЕБХУК
   }
 });
 app.post("/yoomoney", async (req, res) => {
