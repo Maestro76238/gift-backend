@@ -104,7 +104,7 @@ app.post("/tg", async (req, res) => {
             Authorization:
               "Basic " +
               Buffer.from(
-                ${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}
+                `${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`
               ).toString("base64"),
           },
           body: JSON.stringify({
