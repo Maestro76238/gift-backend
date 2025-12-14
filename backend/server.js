@@ -223,11 +223,11 @@ app.post("/tg", async (req, res) => {
     status: "pending"
   });
 
- const payUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.YOOMONEY_WALLET}&label=${paymentId}&quickpay-form=shop&targets=Секретный+ключ&sum=100&paymentType=SB`;
+ const payUrl = `https://yoomoney.ru/quickpay/confirm.xml?receiver=${process.env.YOOMONEY_WALLET}&label=${paymentId}&quickpay-form=shop&targets=Секретный+ключ&sum=1&paymentType=SB`;
 
   send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
     inline_keyboard: [[
-      { text: "💳 Оплатить 100 ₽", url: payUrl }
+      { text: "💳 Оплатить 1 ₽", url: payUrl }
     ]]
   });
 }
