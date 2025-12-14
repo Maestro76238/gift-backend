@@ -65,13 +65,40 @@ app.post("/tg", async (req, res) => {
       });
     }
 
-    // ===== INFO =====
-    if (text === "ℹ️ Как это работает") {
-      await sendMessage(
-        chatId,
-        "1️⃣ Покупаешь код\n2️⃣ Оплачиваешь\n3️⃣ Получаешь код\n4️⃣ Используешь один раз"
-      );
-    }
+if (update.callback_query) {
+  const cb = update.callback_query;
+  const chatId = cb.message.chat.id;
+  const data = cb.data;
+
+  // 🔹 КНОПКА "КАК ЭТО РАБОТАЕТ"
+  if (data === "how_it_works") {
+    await fetch(`${TG_API}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text:
+          "🎁 Как это работает:\n\n" +
+          "1️⃣ Ты покупаешь код\n" +
+          "2️⃣ Вводишь его на сайте\n" +
+          "3️⃣ Получаешь подарок 🎉\n\n" +
+          "Код одноразовый и работает только 1 раз.",
+      }),
+    });
+  }
+
+  // 🔹 ОБЯЗАТЕЛЬНО
+  await fetch(`${TG_API}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      callback_query_id: cb.id,
+    }),
+  });
+
+  return res.sendStatus(200);
+}
+
 
     // ===== BUY =====
     if (text === "💰 Купить код — 100₽") {
