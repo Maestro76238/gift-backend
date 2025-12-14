@@ -116,7 +116,7 @@ const payUrl = `https://yoomoney.ru/quickpay/quickpay
 &receiver=${process.env.YOOMONEY_WALLET}
 &paymentType=AC
 &sum=100
-&targets=Покупка подарочного кода
+&targets=CODE
 &label=${orderId}
 &successURL=${encodeURIComponent(process.env.BASE_URL)}`.replace(/\n/g, "");
 
