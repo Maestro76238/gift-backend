@@ -211,122 +211,63 @@ app.post("/yookassa", async (req, res) => {
   }
 });
 app.get("/admin", checkAdmin, async (req, res) => {
-  const { data: gifts } = await supabase.from("gifts").select("*");
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, tg_id, status, created_at")
-    .order("created_at", {ascending: false });
-  const { data: analytics } = await supabase.from("analytics").select("*");
-app.get("/admin", checkAdmin, async (req, res) => {
-  // 1️⃣ Заказы
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, tg_id, status")
-    .order("created_at", { ascending: false });
+  try {
+    const { data: orders = [] } = await supabase
+      .from("orders")
+      .select("id, tg_id, status")
+      .order("created_at", { ascending: false });
 
-  // 2️⃣ КОДЫ ← ВОТ ТУТ ОНА
-  const { data: codes } = await supabase
-    .from("gifts")
-    .select("code, is_used, created_at")
-    .order("created_at", { ascending: false });
+    const { data: codes = [] } = await supabase
+      .from("gifts")
+      .select("code, is_used")
+      .order("created_at", { ascending: false });
 
-  // 3️⃣ Аналитика
-  const { data: analytics } = await supabase
-    .from("analytics")
-    .select("tg_id, source");
+    const { data: analytics = [] } = await supabase
+      .from("analytics")
+      .select("tg_id, source");
 
-  res.send(`
-    <h1>🛠 Admin Panel</h1>
+    res.send(`
+      <h1>🛠 Admin Panel</h1>
 
-    <h2>📦 Заказы</h2>
-    <table border="1">
-      <tr><th>ID</th><th>TG</th><th>Status</th></tr>
-      ${orders.map(o => `
-        <tr>
-          <td>${o.id}</td>
-          <td>${o.tg_id}</td>
-          <td>${o.status}</td>
-        </tr>
-      `).join("")}
-    </table>
+      <h2>📦 Заказы</h2>
+      <table border="1">
+        <tr><th>ID</th><th>TG</th><th>Status</th></tr>
+        ${orders.map(o => `
+          <tr>
+            <td>${o.id}</td>
+            <td>${o.tg_id ?? "-"}</td>
+            <td>${o.status}</td>
+          </tr>
+        `).join("")}
+      </table>
 
-    <h2>🔑 Коды</h2>
-    <table border="1">
-      <tr><th>Code</th><th>Used</th></tr>
-      ${codes.map(c => `
-        <tr>
-          <td>${c.code}</td>
-          <td>${c.is_used ? "✅" : "❌"}</td>
-        </tr>
-      `).join("")}
-    </table>
+      <h2>🔑 Коды</h2>
+      <table border="1">
+        <tr><th>Code</th><th>Used</th></tr>
+        ${codes.map(c => `
+          <tr>
+            <td>${c.code}</td>
+            <td>${c.is_used ? "✅" : "❌"}</td>
+          </tr>
+        `).join("")}
+      </table>
 
-    <h2>📊 Аналитика</h2>
-    <table border="1">
-      <tr><th>TG</th><th>Source</th></tr>
-      ${analytics.map(a => `
-        <tr>
-          <td>${a.tg_id}</td>
-          <td>${a.source}</td>
-        </tr>
-      `).join("")}
-    </table>
-  `);
+      <h2>📊 Аналитика</h2>
+      <table border="1">
+        <tr><th>TG</th><th>Source</th></tr>
+        ${analytics.map(a => `
+          <tr>
+            <td>${a.tg_id}</td>
+            <td>${a.source}</td>
+          </tr>
+        `).join("")}
+      </table>
+    `);
+  } catch (e) {
+    console.error("ADMIN ERROR:", e);
+    res.status(500).send("Admin error");
+  }
 });
-  res.send(`
-    <html>
-      <head>
-        <title>Admin panel</title>
-        <style>
-          body { font-family: Arial; padding: 20px; }
-          h2 { margin-top: 30px; }
-          table { border-collapse: collapse; width: 100%; }
-          td, th { border: 1px solid #ccc; padding: 6px; }
-        </style>
-      </head>
-      <body>
-
-        <h1>🛠 Admin Panel</h1>
-
-        <h2>💰 Заказы</h2>
-        <table>
-          <tr><th>ID</th><th>TG</th><th>Status</th></tr>
-          ${orders.map(o => `
-            <tr>
-              <td>${o.id}</td>
-              <td>${o.tg_id}</td>
-              <td>${o.status}</td>
-            </tr>
-          `).join("")}
-        </table>
-
-        <h2>🎁 Коды</h2>
-        <table>
-          <tr><th>Code</th><th>Used</th></tr>
-          ${gifts.map(g => `
-            <tr>
-              <td>${g.code}</td>
-              <td>${g.is_used}</td>
-            </tr>
-          `).join("")}
-        </table>
-
-        <h2>📊 Аналитика</h2>
-        <table>
-          <tr><th>TG</th><th>Source</th></tr>
-          ${analytics.map(a => `
-            <tr>
-              <td>${a.tg_id}</td>
-              <td>${a.source}</td>
-            </tr>
-          `).join("")}
-        </table>
-
-      </body>
-    </html>
-  `);
-});
-
 
 // ================== START ==================
 app.listen(PORT, () => {
