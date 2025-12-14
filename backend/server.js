@@ -155,8 +155,7 @@ function createPayLink(orderId) {
         successURL: "https://gift-backend-tn9w.onrender.com/success"
     });
 
-    return https
-://yoomoney.ru/quickpay/confirm.xml?${params.toString()};
+    return `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 }
 
 // ====== START ======
