@@ -124,7 +124,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
 });
 // ================== TELEGRAM BOT ==================
 const TG_TOKEN = process.env.TG_TOKEN;
-const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 
 // helper
 async function tg(method, body) {
