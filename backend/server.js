@@ -2,16 +2,12 @@ import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
 import cors from "cors";
-import bodyParser from "body-parser";
 import { createClient } from "@supabase/supabase-js";
 
 // ================== APP ==================
 const app = express();
+app.use(cors());
 app.use(express.json());
-  verify: (req, res, buf) => {
-    req.rawBody = buf.toString();
-  
-};
 
 
 // ================== ENV ==================
@@ -156,44 +152,49 @@ app.post("/tg", async (req, res) => {
 });
 
 // ================== YOOKASSA WEBHOOK ==================
-app.post(
-  "/yookassa",
-  bodyParser.raw({ type: "application/json" }),
-  async (req, res) => {
-    try {
-      const rawBody = req.body.toString("utf8");
-      const event = JSON.parse(rawBody);
+app.post("/yookassa", async (req, res) => {
+  try {
+    console.log("📩 YOOKASSA WEBHOOK:", JSON.stringify(req.body, null, 2));
 
-    console.log("YOOKASSA:", JSON.stringify(req.body, null, 2));
+    const event = req.body;
 
-    if (event.event === "payment.succeeded") {
-      const payment = event.object;
-      const orderId = payment.metadata.order_id;
-      const tgId = payment.metadata.tg_id;
-
-      // генерим код
-      const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-      await supabase.from("gifts").insert({
-        code,
-        is_used: false,
-      });
-
-      await supabase
-        .from("orders")
-        .update({ status: "paid" })
-        .eq("id", orderId);
-
-      await tgSend(
-        tgId,
-        "OPLATA OK\n\nvash kod\n" + code
-      );
-
-      await tgSend(
-        ADMIN_TG_ID,
-        "💰 Новая покупка\nTG ID: ${tgId}\nКод: ${code}"
-      );
+    if (event.event !== "payment.succeeded") {
+      return res.send("ok");
     }
+
+    const payment = event.object;
+    const orderId = payment.metadata?.order_id;
+    const tgId = payment.metadata?.tg_id;
+
+    if (!orderId || !tgId) {
+      console.error("❌ Нет metadata:", payment.metadata);
+      return res.send("ok");
+    }
+
+    // 🔑 генерим код
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    await supabase.from("gifts").insert({
+      code,
+      is_used: false,
+    });
+
+    await supabase
+      .from("orders")
+      .update({ status: "paid" })
+      .eq("id", orderId);
+
+    // пользователю
+    await tgSend(
+      tgId,
+      `✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>${code}</code>`
+    );
+
+    // админу
+    await tgSend(
+      ADMIN_TG_ID,
+      `💰 Новая покупка\nTG ID: ${tgId}\nКод: ${code}`
+    );
 
     res.send("ok");
   } catch (e) {
