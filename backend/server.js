@@ -166,8 +166,8 @@ app.post(
 
       const payment = event.object;
       const paymentId = payment.id;
-      const orderId = payment.metadata? .order_id;
-      const tgId = payment.metadata? .tg_id;
+      const orderId = payment.metadata?.order_id;
+      const tgId = payment.metadata?.tg_id;
 
       if (!paymentId || !orderId || !tgId) {
 	console.error("Missing metadata");
