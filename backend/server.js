@@ -176,7 +176,7 @@ app.post("/yookassa", async (req, res) => {
 
       await tgSend(
         tgId,
-        "✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>${code}"</code>
+        "✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>" + code +"</code>
       );
 
       await tgSend(
