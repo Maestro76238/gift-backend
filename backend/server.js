@@ -1,182 +1,198 @@
 import express from "express";
 import fetch from "node-fetch";
-import supabase from "./supabaseClient.js";
+import crypto from "crypto";
+import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
 
-
+// ================== APP ==================
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-// ====== ENV ======
+// ================== ENV ==================
+const PORT = process.env.PORT || 10000;
+
 const TG_TOKEN = process.env.TG_TOKEN;
-const ADMIN_TG_ID = process.env.ADMIN_TG_ID; // пока не используется
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
-const PRICE = 1; // 1 рубль (потом поменяешь на 100)
-const CODE_TTL_MINUTES = 5;
+const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
 
-// ====== HELPERS ======
-async function sendMessage(chatId, text, keyboard = null) {
-    const body = {
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-    };
+const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
+const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
-    if (keyboard) {
-        body.reply_markup = keyboard;
-    }
+// ================== SUPABASE ==================
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-    await fetch(`${TG_API}/sendMessage`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body),
-    });
+// ================== TELEGRAM ==================
+const TG_API = https://api.telegram.org/bot${TG_TOKEN};
+
+async function tgSend(chatId, text, replyMarkup = null) {
+  const body = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+  };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+
+  await fetch(`${TG_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
-// ====== KEYBOARDS ======
-const mainKeyboard = {
-    inline_keyboard: [
-        [{text: "ℹ️ Как это работает?", callback_data: "INFO"}],
-        [{text: "🔑 Купить секретный ключ", callback_data: "BUY"}],
-    ],
-};
-
-const backKeyboard = {
-    inline_keyboard: [
-        [{text: "⬅️ Назад", callback_data: "BACK"}],
-    ],
-};
-
-// ====== TELEGRAM WEBHOOK ======
-app.post("/tg", async (req, res) => {
-    try {
-        const update = req.body;
-        console.log("📩 TG UPDATE:", JSON.stringify(update));
-
-        // --- /start ---
-        if (update.message && update.message.text === "/start") {
-            const chatId = update.message.chat.id;
-
-            await sendMessage(
-                chatId,
-                "🎄 <b>С наступающим Новым годом!</b>\n\n" +
-                "Здесь вы можете купить секретный ключ 🔑 и открыть свой подарок 🎁\n\n" +
-                "Выберите действие 👇",
-                mainKeyboard
-            );
-        }
-
-        // --- BUTTONS ---
-        if (update.callback_query) {
-            const cb = update.callback_query;
-
-            const chatId =
-                cb.message?.chat?.id || cb.from.id; // 🔥 ГЛАВНЫЙ ФИКС
-
-            const data = cb.data;
-
-            if (!chatId) {
-                console.log("❌ No chatId in callback");
-                return res.send("OK");
-            }
-
-            // дальше логика BUY / INFO
-        }
-
-        if (data === "INFO") {
-            await sendMessage(
-                chatId,
-                "ℹ️ <b>Как это работает</b>\n\n" +
-                "1️⃣ Вы покупаете секретный ключ 🔑\n" +
-                "2️⃣ Вводите его на сайте\n" +
-                "3️⃣ Открывается ваш подарок 🎁\n\n" +
-                "⚠️ Код одноразовый и сгорает после использования",
-                backKeyboard
-            );
-        }
-
-        if (data === "BUY") {
-            // проверяем, есть ли активный код
-            const {data: active} = await supabase
-                .from("orders")
-                .select("*")
-                .eq("tg_id", chatId)
-                .eq("status", "pending")
-                .maybeSingle();
-
-            if (active) {
-                return send(chatId, "❌ У вас уже есть активный неоплаченный код");
-            }
-
-            const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-            const {data: order} = await supabase
-                .from("orders")
-                .insert({
-                    tg_id: chatId,
-                    code,
-                    amount: PRICE,
-                    status: "pending",
-                })
-                .select()
-                .maybeSingle();
-
-            // авто-сгорание через 5 минут
-            setTimeout(async () => {
-                await supabase
-                    .from("orders")
-                    .update({status: "expired"})
-                    .eq("id", order.id)
-                    .eq("status", "pending");
-            }, CODE_TTL_MINUTES * 60 * 1000);
-
-            const payUrl = createPayLink(order.id);
-
-            await send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
-                inline_keyboard: [[{text: "💰 Оплатить", url: payUrl}]],
-            });
-        }
-
-        if (data === "BACK") {
-            await sendMessage(
-                chatId,
-                "Выберите действие 👇",
-                mainKeyboard
-            );
-        }
-    
-
-    res.send("OK");
-}
-catch
-(e)
-{
-    console.error("TG ERROR:", e);
-    res.send("ERROR");
-}
-})
-;
-
-// ====== HEALTH ======
+// ================== HEALTH ==================
 app.get("/", (req, res) => {
-    res.send("Telegram bot is alive ✅");
+  res.send("OK");
 });
 
-function createPayLink(orderId) {
-    const params = new URLSearchParams({
-        receiver: process.env.YOOMONEY_WALLET,
-        quickpay_form: "shop",
-        targets: "Секретный ключ",
-        paymentType: "AC",
-        sum: PRICE,
-        label: orderId,
-        successURL: "https://gift-backend-tn9w.onrender.com/success"
-    });
+// ================== TELEGRAM WEBHOOK ==================
+app.post("/tg", async (req, res) => {
+  try {
+    const update = req.body;
+    console.log("TG UPDATE:", JSON.stringify(update));
 
-    return `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
-}
+    // /start
+    if (update.message?.text === "/start") {
+      const chatId = update.message.chat.id;
 
-// ====== START ======
-const PORT = process.env.PORT || 10000;
+      await tgSend(
+        chatId,
+        "🎄 <b>С наступающим Новым годом!</b>\n\nЗдесь вы можете купить секретный ключ 🔑 и открыть подарок 🎁\n\n<b>Выберите действие 👇</b>",
+        {
+          inline_keyboard: [
+            [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
+            [{ text: "🔑 Купить секретный ключ", callback_data: "BUY" }],
+          ],
+        }
+      );
+    }
+
+    // кнопки
+    if (update.callback_query) {
+      const chatId = update.callback_query.message.chat.id;
+      const tgId = update.callback_query.from.id;
+      const action = update.callback_query.data;
+
+      // INFO
+      if (action === "INFO") {
+        await tgSend(
+          chatId,
+          "🔑 Вы покупаете секретный ключ\n🎁 Вводите его на сайте\n🔥 Код одноразовый и сгорает после использования"
+        );
+      }
+
+      // BUY
+      if (action === "BUY") {
+        // создаём заказ
+        const orderId = crypto.randomUUID();
+
+        await supabase.from("orders").insert({
+          id: orderId,
+          tg_id: tgId,
+          status: "pending",
+          amount: 1,
+        });
+
+        // создаём оплату ЮKassa
+        const payment = await fetch("https://api.yookassa.ru/v3/payments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotence-Key": crypto.randomUUID(),
+            Authorization:
+              "Basic " +
+              Buffer.from(
+                ${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}
+              ).toString("base64"),
+          },
+          body: JSON.stringify({
+            amount: {
+              value: "1.00",
+              currency: "RUB",
+            },
+            confirmation: {
+              type: "redirect",
+              return_url: "https://google.com",
+            },
+            capture: true,
+            description: "Секретный ключ",
+            metadata: {
+              order_id: orderId,
+              tg_id: tgId,
+            },
+          }),
+        }).then((r) => r.json());
+
+        await supabase
+          .from("orders")
+          .update({ payment_id: payment.id })
+          .eq("id", orderId);
+
+        await tgSend(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
+          inline_keyboard: [
+            [
+              {
+                text: "Оплатить 💳",
+                url: payment.confirmation.confirmation_url,
+              },
+            ],
+          ],
+        });
+      }
+    }
+
+    res.send("ok");
+  } catch (e) {
+    console.error("TG ERROR:", e);
+    res.send("ok");
+  }
+});
+
+// ================== YOOKASSA WEBHOOK ==================
+app.post("/yookassa", async (req, res) => {
+  try {
+    const event = req.body;
+    console.log("YOOKASSA:", JSON.stringify(event));
+
+    if (event.event === "payment.succeeded") {
+      const payment = event.object;
+      const orderId = payment.metadata.order_id;
+      const tgId = payment.metadata.tg_id;
+
+      // генерим код
+      const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+      await supabase.from("gifts").insert({
+        code,
+        is_used: false,
+      });
+
+      await supabase
+        .from("orders")
+        .update({ status: "paid" })
+        .eq("id", orderId);
+
+      await tgSend(
+        tgId,
+        ✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>${code}</code>
+      );
+
+      await tgSend(
+        ADMIN_TG_ID,
+        💰 Новая покупка\nTG ID: ${tgId}\nКод: ${code}
+      );
+    }
+
+    res.send("ok");
+  } catch (e) {
+    console.error("YOOKASSA ERROR:", e);
+    res.send("ok");
+  }
+});
+
+// ================== START ==================
 app.listen(PORT, () => {
-    console.log("🚀 Server running on", PORT);
+  console.log("🚀 Server running on", PORT);
 });
