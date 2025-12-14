@@ -143,7 +143,7 @@ app.post("/tg", async (req, res) => {
                 mainKeyboard
             );
         }
-    }
+    
 
     res.send("OK");
 }
