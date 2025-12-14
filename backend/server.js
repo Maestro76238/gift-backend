@@ -28,33 +28,85 @@ const TG_TOKEN = process.env.TG_TOKEN;
 const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
 const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 app.post("/tg", async (req, res) => {
-  console.log("📩 TG UPDATE:", JSON.stringify(req.body));
-
   try {
-    const msg = req.body.message;
-    if (!msg) {
-      res.send("ok");
-      return;
+    const update = req.body;
+    console.log("📩 TG UPDATE:", JSON.stringify(update));
+
+    if (!update.message && !update.callback_query) {
+      return res.status(200).send("ok");
     }
 
-    const chatId = msg.chat.id;
-    const text = msg.text || "";
+    // ===== MESSAGE =====
+    if (update.message) {
+      const chatId = update.message.chat.id;
+      const text = update.message.text;
 
-    if (text === "/start") {
-      await fetch(`${TG_API}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: "С наступающим Новым годом 🎄\n\nБот работает ✅",
-        }),
-      });
+      if (text === "/start") {
+        await fetch(`${TG_API}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text:
+              "🎄 С наступающим Новым годом!\n\n" +
+              "Здесь вы можете купить секретный ключ 🔑 и открыть свой подарок 🎁\n\n" +
+              "Выберите действие 👇",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "ℹ️ Как это работает?", callback_data: "INFO" },
+                ],
+                [
+                  { text: "🔑 Купить секретный ключ", callback_data: "BUY" },
+                ],
+              ],
+            },
+          }),
+        });
+      }
     }
 
-    res.send("ok"); // ⬅️ ЭТО КРИТИЧЕСКИ ВАЖНО
-  } catch (e) {
-    console.error("TG ERROR:", e);
-    res.send("ok"); // ⬅️ ВСЕГДА отвечаем 200
+    // ===== CALLBACKS =====
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      const chatId = cb.message.chat.id;
+
+      // INFO
+      if (cb.data === "INFO") {
+        await fetch(`${TG_API}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text:
+              "ℹ️ *Как это работает*\n\n" +
+              "Вы покупаете секретный ключ 🔑 за 100 рублей.\n" +
+              "Вводите его на сайте и открываете свой новогодний подарок 🎁\n\n" +
+              "⚠️ Код одноразовый — после использования он сгорает 🔥",
+            parse_mode: "Markdown",
+          }),
+        });
+      }
+
+      // BUY (пока заглушка)
+      if (cb.data === "BUY") {
+        await fetch(`${TG_API}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text:
+              "💳 Покупка ключа\n\n" +
+              "Оплата будет подключена на следующем шаге.",
+          }),
+        });
+      }
+    }
+
+    res.status(200).send("ok");
+  } catch (err) {
+    console.error("TG ERROR:", err);
+    res.status(200).send("ok");
   }
 });
 
