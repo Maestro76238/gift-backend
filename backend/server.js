@@ -138,6 +138,7 @@ app.post("/telegram", async (req, res) => {
     if (text === "/start") {
       reply = "🎄 Привет! Бот работает и готов продавать подарки 🎁";
     }
+    console.log("TG_TOKEN =", process.env.TG_TOKEN);
 
     const tgRes = await fetch(
       "https://api.telegram.org/bot" +
