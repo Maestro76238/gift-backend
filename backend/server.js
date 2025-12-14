@@ -107,7 +107,7 @@ app.post("/tg", async (req, res) => {
           id: orderId,
           tg_id: tgId,
           status: "pending",
-          amount: 1,
+          created_at: new Date().toISOString(),
         });
 
         // создаём оплату ЮKassa
@@ -209,11 +209,70 @@ app.post("/yookassa", async (req, res) => {
     console.error("❌ YOOKASSA ERROR:", e);
     res.send("ok");
   }
-});app.get("/admin", checkAdmin, async (req, res) => {
+});
+app.get("/admin", checkAdmin, async (req, res) => {
   const { data: gifts } = await supabase.from("gifts").select("*");
-  const { data: orders } = await supabase.from("orders").select("*");
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("id, tg_id, status, created_at")
+    .order("created_at", {ascending: false });
   const { data: analytics } = await supabase.from("analytics").select("*");
+app.get("/admin", checkAdmin, async (req, res) => {
+  // 1️⃣ Заказы
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("id, tg_id, status")
+    .order("created_at", { ascending: false });
 
+  // 2️⃣ КОДЫ ← ВОТ ТУТ ОНА
+  const { data: codes } = await supabase
+    .from("gifts")
+    .select("code, is_used, created_at")
+    .order("created_at", { ascending: false });
+
+  // 3️⃣ Аналитика
+  const { data: analytics } = await supabase
+    .from("analytics")
+    .select("tg_id, source");
+
+  res.send(`
+    <h1>🛠 Admin Panel</h1>
+
+    <h2>📦 Заказы</h2>
+    <table border="1">
+      <tr><th>ID</th><th>TG</th><th>Status</th></tr>
+      ${orders.map(o => `
+        <tr>
+          <td>${o.id}</td>
+          <td>${o.tg_id}</td>
+          <td>${o.status}</td>
+        </tr>
+      `).join("")}
+    </table>
+
+    <h2>🔑 Коды</h2>
+    <table border="1">
+      <tr><th>Code</th><th>Used</th></tr>
+      ${codes.map(c => `
+        <tr>
+          <td>${c.code}</td>
+          <td>${c.is_used ? "✅" : "❌"}</td>
+        </tr>
+      `).join("")}
+    </table>
+
+    <h2>📊 Аналитика</h2>
+    <table border="1">
+      <tr><th>TG</th><th>Source</th></tr>
+      ${analytics.map(a => `
+        <tr>
+          <td>${a.tg_id}</td>
+          <td>${a.source}</td>
+        </tr>
+      `).join("")}
+    </table>
+  `);
+});
   res.send(`
     <html>
       <head>
