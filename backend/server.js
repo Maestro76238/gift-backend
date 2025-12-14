@@ -26,111 +26,108 @@ const supabase = createClient(
 );
 
 // ===== TELEGRAM =====
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
+const TG_API = `https://api.telegram.org/bot${process.env.TG_TOKEN}`;
 
-async function sendMessage(chatId, text, replyMarkup = null) {
-  await fetch(`${TG_API}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: replyMarkup
-    })
-  });
-}
+// ===== TELEGRAM BUTTONS =====
+const mainKeyboard = {
+  inline_keyboard: [
+    [
+      { text: "ℹ️ Как это работает", callback_data: "how_it_works" }
+    ],
+    [
+      { text: "💳 Купить код — 100₽", callback_data: "buy_code" }
+    ]
+  ]
+};
+app.post("/telegram", async (req, res) => {
+  const update = req.body;
+  console.log("📩 TG UPDATE:", JSON.stringify(update));
 
-// ===== HEALTH =====
-app.get("/", (_, res) => {
-  res.send("Backend OK ✅");
-});
+  // ===== /start =====
+  if (update.message) {
+    const chatId = update.message.chat.id;
+    const text = update.message.text;
 
-// ===== TELEGRAM WEBHOOK =====
-app.post("/tg", async (req, res) => {
-  try {
-    const msg = req.body.message;
-    if (!msg) return res.sendStatus(200);
-
-    const chatId = msg.chat.id;
-    const text = msg.text || "";
-
-    // ===== /start =====
     if (text === "/start") {
-      await sendMessage(chatId, "Добро пожаловать 👋", {
-        keyboard: [
-          [{ text: "ℹ️ Как это работает" }],
-          [{ text: "💰 Купить код — 100₽" }]
-        ],
-        resize_keyboard: true
+      await fetch(`${TG_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text:
+            "🎁 Добро пожаловать!\n\n" +
+            "Здесь ты можешь купить код и получить подарок 🎄",
+          reply_markup: mainKeyboard
+        })
       });
+
+      return res.sendStatus(200);
     }
+  }
 
-if (update.callback_query) {
-  const cb = update.callback_query;
-  const chatId = cb.message.chat.id;
-  const data = cb.data;
+  // ===== CALLBACK BUTTONS =====
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    const chatId = cb.message.chat.id;
+    const data = cb.data;
 
-  // 🔹 КНОПКА "КАК ЭТО РАБОТАЕТ"
-  if (data === "how_it_works") {
-    await fetch(`${TG_API}/sendMessage`, {
+    // ОБЯЗАТЕЛЬНО подтверждаем callback
+    await fetch(`${TG_API}/answerCallbackQuery`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
-        text:
-          "🎁 Как это работает:\n\n" +
-          "1️⃣ Ты покупаешь код\n" +
-          "2️⃣ Вводишь его на сайте\n" +
-          "3️⃣ Получаешь подарок 🎉\n\n" +
-          "Код одноразовый и работает только 1 раз.",
-      }),
+        callback_query_id: cb.id
+      })
     });
-  }
 
-  // 🔹 ОБЯЗАТЕЛЬНО
-  await fetch(`${TG_API}/answerCallbackQuery`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      callback_query_id: cb.id,
-    }),
-  });
-
-  return res.sendStatus(200);
-}
-
-
-    // ===== BUY =====
-    if (text === "💰 Купить код — 100₽") {
-      const orderId = crypto.randomUUID();
-
-      await supabase.from("orders").insert({
-        id: orderId,
-        tg_chat_id: chatId,
-        status: "pending"
+    // ℹ️ КАК ЭТО РАБОТАЕТ
+    if (data === "how_it_works") {
+      await fetch(`${TG_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text:
+            "📦 Как это работает:\n\n" +
+            "1️⃣ Ты покупаешь код\n" +
+            "2️⃣ Вводишь его на сайте\n" +
+            "3️⃣ Получаешь подарок 🎁\n\n" +
+            "Код одноразовый и действует только один раз."
+        })
       });
 
-      const payUrl =
-        "https://yoomoney.ru/quickpay/confirm.xml" +
-        "?receiver=" + YOOMONEY_WALLET +
-        "&quickpay-form=button" +
-        "&paymentType=AC" +
-        "&sum=100" +
-        "&label=" + orderId;
-
-      await sendMessage(chatId, "💳 Оплатите заказ:", {
-        inline_keyboard: [
-          [{ text: "👉 Оплатить 100₽", url: payUrl }]
-        ]
-      });
+      return res.sendStatus(200);
     }
 
-    res.sendStatus(200);
-  } catch (e) {
-    console.error("TG ERROR:", e);
-    res.sendStatus(200);
+    // 💳 КУПИТЬ КОД
+    if (data === "buy_code") {
+      const payUrl =
+        "https://yoomoney.ru/quickpay/confirm.xml" +
+        "?receiver=" + process.env.YOOMONEY_WALLET +
+        "&quickpay-form=shop" +
+        "&targets=Подарочный+код" +
+        "&paymentType=SB" +
+        "&sum=100";
+
+      await fetch(`${TG_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text:
+            "💳 Для покупки кода перейдите по ссылке:\n\n" +
+            payUrl
+        })
+      });
+
+      return res.sendStatus(200);
+    }
   }
+
+  res.sendStatus(200);
 });
+
+
 
 // ===== AUTOCHECK PAYMENTS (каждые 20 сек) =====
 setInterval(async () => {
