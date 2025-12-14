@@ -27,6 +27,36 @@ const upload = multer({ storage: multer.memoryStorage() });
 const TG_TOKEN = process.env.TG_TOKEN;
 const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
 const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
+app.post("/telegram", async (req, res) => {
+  console.log("📩 TG UPDATE:", JSON.stringify(req.body));
+
+  try {
+    const msg = req.body.message;
+    if (!msg) {
+      res.send("ok");
+      return;
+    }
+
+    const chatId = msg.chat.id;
+    const text = msg.text || "";
+
+    if (text === "/start") {
+      await fetch(`${TG_API}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "С наступающим Новым годом 🎄\n\nБот работает ✅",
+        }),
+      });
+    }
+
+    res.send("ok"); // ⬅️ ЭТО КРИТИЧЕСКИ ВАЖНО
+  } catch (e) {
+    console.error("TG ERROR:", e);
+    res.send("ok"); // ⬅️ ВСЕГДА отвечаем 200
+  }
+});
 
 // ================== HEALTH ==================
 app.get("/", (_, res) => res.send("Backend is alive ✅"));
