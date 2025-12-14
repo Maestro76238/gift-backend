@@ -154,7 +154,7 @@ app.post("/tg", async (req, res) => {
 app.post("/yookassa", async (req, res) => {
   try {
     const event = req.body;
-    console.log("YOOKASSA:", JSON.stringify(event));
+    console.log("YOOKASSA:", JSON.stringify(req.body, null, 2));
 
     if (event.event === "payment.succeeded") {
       const payment = event.object;
