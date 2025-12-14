@@ -126,6 +126,23 @@ app.get("/api/get-gift/:code", async (req, res) => {
 // ================== TELEGRAM BOT ==================
 const TG_TOKEN = process.env.TG_TOKEN;
 const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
+async function send(chatId, text, replyMarkup = null) {
+  const body = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+  };
+
+  if (replyMarkup) {
+    body.reply_markup = replyMarkup;
+  }
+
+  await fetch(`${TG_API}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
 
 // helper
 async function tg(method, body) {
