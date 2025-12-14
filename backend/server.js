@@ -122,12 +122,10 @@ app.get("/api/get-gift/:code", async (req, res) => {
   }
 });
 
-// ================== TELEGRAM BOT ==================
-const TG_API = "https://api.telegram.org/bot" + process.env.TG_TOKEN;
-
+// ================= TELEGRAM WEBHOOK =================
 app.post("/telegram", async (req, res) => {
   try {
-    console.log("TG UPDATE:", JSON.stringify(req.body));
+    console.log("📩 TG UPDATE:", JSON.stringify(req.body));
 
     const message = req.body.message;
     if (!message) return res.sendStatus(200);
@@ -138,29 +136,32 @@ app.post("/telegram", async (req, res) => {
     let reply = "🤖 Я жив";
 
     if (text === "/start") {
-      reply = "🎄 Добро пожаловать!\n\nНапиши /buy чтобы получить подарок 🎁";
+      reply = "🎄 Привет! Бот работает и готов продавать подарки 🎁";
     }
 
-    if (text === "/buy") {
-      reply = "💳 Продажа скоро будет подключена.\nПока тестовый режим.";
-    }
+    const tgRes = await fetch(
+      "https://api.telegram.org/bot" +
+        process.env.TG_TOKEN +
+        "/sendMessage",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: reply,
+        }),
+      }
+    );
 
-    await fetch(TG_API + "/sendMessage", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: reply,
-      }),
-    });
+    const tgJson = await tgRes.json();
+    console.log("📤 TG RESPONSE:", tgJson);
 
     res.sendStatus(200);
-  } catch (e) {
-    console.error("TG ERROR:", e);
+  } catch (err) {
+    console.error("🔥 TG ERROR:", err);
     res.sendStatus(200);
   }
 });
-
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
