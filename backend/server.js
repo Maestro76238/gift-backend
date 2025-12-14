@@ -2,6 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
 import cors from "cors";
+import bodyParser from "body-parser";
 import { createClient } from "@supabase/supabase-js";
 
 // ================== APP ==================
@@ -151,9 +152,14 @@ app.post("/tg", async (req, res) => {
 });
 
 // ================== YOOKASSA WEBHOOK ==================
-app.post("/yookassa", async (req, res) => {
-  try {
-    const event = req.body;
+app.post(
+  "/youkassa",
+  bodyParser.raw({ tyoe: "application/json" }),
+  async (req, res) => {
+    try {
+      const rawBody = req.body.toString("utf8");
+      const event = JSON.parse(rawBody);
+
     console.log("YOOKASSA:", JSON.stringify(req.body, null, 2));
 
     if (event.event === "payment.succeeded") {
