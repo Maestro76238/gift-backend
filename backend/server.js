@@ -4,6 +4,19 @@ import crypto from "crypto";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
+function checkAdmin(req, res, next) {
+  const tgId = req.query.tg_id;
+
+  if (!tgId) {
+    return res.status(401).send("TG ID required");
+  }
+
+  if (String(tgId) !== String(ADMIN_TG_ID)) {
+    return res.status(403).send("Access denied");
+  }
+
+  next();
+}
 
 // ================== APP ==================
 const app = express();
@@ -70,13 +83,6 @@ app.post("/tg", async (req, res) => {
         }
       );
     }
-function checkAdmin(req, res, next) {
-  const password = req.query.password;
-  if (password !== process.env.ADMIN_PASSWORD) {
-    return res.status(403).send("❌ Access denied");
-  }
-  next();
-}
 
     // кнопки
     if (update.callback_query) {
