@@ -41,8 +41,7 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "NO FILE" });
 
     const ext = req.file.originalname.split(".").pop();
-    const safeName =
-      Date.now() + "-" + crypto.randomUUID() + "." + ext;
+    const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
 
     await supabase.storage
       .from("gift-files")
@@ -64,8 +63,27 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
   }
 });
 
-/* ================= CHECK CODE ================= */
+/* ================= CHECK CODE (БЕЗ СПИСАНИЯ) ================= */
 app.get("/api/check/:code", async (req, res) => {
+  const code = req.params.code.toUpperCase();
+
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("*")
+    .eq("code", code)
+    .single();
+
+  if (error || !data)
+    return res.status(404).json({ error: "INVALID" });
+
+  if (data.is_used)
+    return res.status(400).json({ error: "USED" });
+
+  res.json({ ok: true });
+});
+
+/* ================= DOWNLOAD (СПИСАНИЕ ТУТ) ================= */
+app.get("/api/download/:code", async (req, res) => {
   const code = req.params.code.toUpperCase();
 
   const { data } = await supabase
@@ -75,21 +93,21 @@ app.get("/api/check/:code", async (req, res) => {
     .single();
 
   if (!data || data.is_used)
-    return res.status(400).json({ error: "USED" });
+    return res.status(400).send("USED");
 
-  const { data: url } = supabase.storage
+  const { data: signed } = await supabase.storage
     .from("gift-files")
-    .getPublicUrl(data.file_path);
+    .createSignedUrl(data.file_path, 60);
 
   await supabase
     .from("gifts")
     .update({ is_used: true })
     .eq("code", code);
 
-  res.json({ gift_url: url.publicUrl });
+  res.redirect(signed.signedUrl);
 });
 
-/* ================= TELEGRAM WEBHOOK ================= */
+/* ================= TELEGRAM ================= */
 app.post("/telegram", async (req, res) => {
   const msg = req.body.message;
   if (!msg) return res.sendStatus(200);
@@ -98,7 +116,7 @@ app.post("/telegram", async (req, res) => {
   const text = msg.text;
 
   if (text === "/start") {
-    await tgSend(chatId, "🎁 Добро пожаловать!\n\nКупить код — 100₽");
+    await tgSend(chatId, "🎁 Добро пожаловать!\nКод — 100₽");
     await tgButtons(chatId);
   }
 
@@ -111,71 +129,20 @@ app.post("/telegram", async (req, res) => {
       status: "pending",
     });
 
-const payUrl = `https://yoomoney.ru/quickpay/quickpay-form.html
-?quickpay-form=shop
-&receiver=${process.env.YOOMONEY_WALLET}
-&paymentType=AC
-&sum=100
-&targets=CODE
-&label=${orderId}
-&successURL=${encodeURIComponent(process.env.BASE_URL)}`.replace(/\n/g, "");
+    const payUrl =
+      "https://yoomoney.ru/quickpay/quickpay-form.html" +
+      "?quickpay-form=shop" +
+      `&receiver=${process.env.YOOMONEY_WALLET}` +
+      "&paymentType=AC" +
+      "&sum=100" +
+      "&targets=GiftCode" +
+      `&label=${orderId}`;
 
     await tgSend(chatId, `💳 Оплатите:\n${payUrl}`);
   }
 
   res.sendStatus(200);
 });
-
-/* ================= YOUMONEY WEBHOOK ================= */
-app.post("/yoomoney", async (req, res) => {
-  const { label, sha1_hash, withdraw_amount } = req.body;
-
-  const hash = crypto
-    .createHash("sha1")
-    .update(
-      `${req.body.notification_type}&${req.body.operation_id}&${withdraw_amount}&643&${req.body.datetime}&${req.body.sender}&${req.body.codepro}&${process.env.YOOMONEY_SECRET}&${label}`
-    )
-    .digest("hex");
-
-  if (hash !== sha1_hash) return res.sendStatus(403);
-
-  const { data: gift } = await supabase
-    .from("gifts")
-    .select("*")
-    .eq("is_used", false)
-    .limit(1)
-    .single();
-
-  await supabase
-    .from("gifts")
-    .update({ is_used: true })
-    .eq("code", gift.code);
-
-  await supabase
-    .from("orders")
-    .update({ status: "paid", gift_code: gift.code })
-    .eq("id", label);
-
-  const { data: order } = await supabase
-    .from("orders")
-    .select("tg_user_id")
-    .eq("id", label)
-    .single();
-
-  await tgSend(order.tg_user_id, `🎉 Ваш код:\n${gift.code}`);
-
-  res.send("OK");
-});
-
-/* ================= AUTO RESET ================= */
-setInterval(async () => {
-  const limit = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  await supabase
-    .from("orders")
-    .update({ status: "expired" })
-    .eq("status", "pending")
-    .lt("created_at", limit);
-}, 10 * 60 * 1000);
 
 /* ================= HELPERS ================= */
 async function tgSend(chatId, text) {
@@ -203,4 +170,4 @@ async function tgButtons(chatId) {
 
 /* ================= START ================= */
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("🚀 Server on", PORT));
+app.listen(PORT, () => console.log("🚀 Server running", PORT));
