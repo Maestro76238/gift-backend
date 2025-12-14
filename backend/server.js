@@ -1,5 +1,6 @@
 import express from "express";
 import fetch from "node-fetch";
+import supabase from "./supabaseClient.js";
 
 
 const app = express();
