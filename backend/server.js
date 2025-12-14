@@ -233,7 +233,7 @@ const paymentUrl =
 
   send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
     inline_keyboard: [[
-      { text: "💳 Оплатить 1 ₽", url: payUrl }
+      { text: "💳 Оплатить 1 ₽", url: paymentUrl }
     ]]
   });
 }
