@@ -96,7 +96,10 @@ app.get("/api/get-gift/:code", async (req, res) => {
 });
 
 // ================== TELEGRAM WEBHOOK ==================
+console.log("📩 TG UPDATE:", JSON.stringify(req.body));
+
 app.post("/telegram", async (req, res) => {
+
   try {
     const msg = req.body.message;
     if (!msg) return res.sendStatus(200);
