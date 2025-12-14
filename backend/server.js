@@ -3,6 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import crypto from "crypto";
 import path from "path";
+import fetch from "node-fetch"
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 
@@ -184,18 +185,42 @@ app.post("/tg", async (req, res) => {
 
     // BUY
     if (data === "BUY") {
-      await tg("sendMessage", {
-        chat_id: chatId,
-        text:
-          "💳 Покупка секретного ключа\n\n" +
-          "Оплата будет доступна чуть позже.",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🔙 Назад", callback_data: "BACK" }],
-          ],
-        },
-      });
-    }
+  // проверка активного кода
+  const { data: activeGift } = await supabase
+    .from("gifts")
+    .select("id")
+    .eq("tg_user_id", chatId)
+    .eq("is_used", false)
+    .maybeSingle();
+
+  if (activeGift) {
+    return send(chatId, "❗ У вас уже есть активный ключ. Сначала используйте его.");
+  }
+
+  const paymentId = crypto.randomUUID();
+
+  await supabase.from("payments").insert({
+    tg_user_id: chatId,
+    payment_id: paymentId,
+    amount: 100,
+    status: "pending"
+  });
+
+  const payUrl =
+    https://yoomoney.ru/quickpay/confirm.xml +
+    ?receiver=${process.env.YOOMONEY_WALLET} +
+    &label=${paymentId} +
+    &quickpay-form=shop +
+    &targets=Секретный+ключ +
+    &sum=100 +
+    &paymentType=SB;
+
+  send(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
+    inline_keyboard: [[
+      { text: "💳 Оплатить 100 ₽", url: payUrl }
+    ]]
+  });
+}
 
     // BACK
     if (data === "BACK") {
@@ -212,6 +237,87 @@ app.post("/tg", async (req, res) => {
         },
       });
     }
+  }
+});
+app.post("/yoomoney", express.urlencoded({ extended: false }), async (req, res) => {
+  try {
+    const {
+      notification_type,
+      operation_id,
+      amount,
+      currency,
+      datetime,
+      sender,
+      codepro,
+      label,
+      sha1_hash
+    } = req.body;
+
+    const secret = process.env.YOOMONEY_SECRET;
+
+    const checkString =
+      notification_type + "&" +
+      operation_id + "&" +
+      amount + "&" +
+      currency + "&" +
+      datetime + "&" +
+      sender + "&" +
+      codepro + "&" +
+      secret + "&" +
+      label;
+
+    const hash = crypto
+      .createHash("sha1")
+      .update(checkString)
+      .digest("hex");
+
+    if (hash !== sha1_hash) {
+      return res.status(403).send("Invalid hash");
+    }
+
+    if (Number(amount) !== 100) {
+      return res.status(400).send("Wrong amount");
+    }
+
+    // ищем платёж
+    const { data: payment } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("payment_id", label)
+      .single();
+
+    if (!payment || payment.status !== "pending") {
+      return res.send("OK");
+    }
+
+    // генерируем код
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    await supabase.from("gifts").insert({
+      code,
+      is_used: false,
+      tg_user_id: payment.tg_user_id
+    });
+
+    await supabase
+      .from("payments")
+      .update({ status: "paid" })
+      .eq("id", payment.id);
+
+    // отправляем код в Telegram
+    await fetch(`${TG_API}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: payment.tg_user_id,
+        text: 🎉 Оплата прошла успешно!\n\nВаш секретный ключ:\n🔑 ${code}\n\nВведите его на сайте и откройте подарок 🎁
+      })
+    });
+
+    res.send("OK");
+  } catch (e) {
+    console.error("YOOMONEY ERROR:", e);
+    res.status(500).send("ERROR");
   }
 });
 
