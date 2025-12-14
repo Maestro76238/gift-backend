@@ -3,6 +3,7 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
+const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
 
 // ================== APP ==================
 const app = express();
@@ -69,6 +70,13 @@ app.post("/tg", async (req, res) => {
         }
       );
     }
+function checkAdmin(req, res, next) {
+  const password = req.query.password;
+  if (password !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).send("❌ Access denied");
+  }
+  next();
+}
 
     // кнопки
     if (update.callback_query) {
@@ -195,7 +203,66 @@ app.post("/yookassa", async (req, res) => {
     console.error("❌ YOOKASSA ERROR:", e);
     res.send("ok");
   }
+});app.get("/admin", checkAdmin, async (req, res) => {
+  const { data: gifts } = await supabase.from("gifts").select("*");
+  const { data: orders } = await supabase.from("orders").select("*");
+  const { data: analytics } = await supabase.from("analytics").select("*");
+
+  res.send(`
+    <html>
+      <head>
+        <title>Admin panel</title>
+        <style>
+          body { font-family: Arial; padding: 20px; }
+          h2 { margin-top: 30px; }
+          table { border-collapse: collapse; width: 100%; }
+          td, th { border: 1px solid #ccc; padding: 6px; }
+        </style>
+      </head>
+      <body>
+
+        <h1>🛠 Admin Panel</h1>
+
+        <h2>💰 Заказы</h2>
+        <table>
+          <tr><th>ID</th><th>TG</th><th>Status</th></tr>
+          ${orders.map(o => `
+            <tr>
+              <td>${o.id}</td>
+              <td>${o.tg_id}</td>
+              <td>${o.status}</td>
+            </tr>
+          `).join("")}
+        </table>
+
+        <h2>🎁 Коды</h2>
+        <table>
+          <tr><th>Code</th><th>Used</th></tr>
+          ${gifts.map(g => `
+            <tr>
+              <td>${g.code}</td>
+              <td>${g.is_used}</td>
+            </tr>
+          `).join("")}
+        </table>
+
+        <h2>📊 Аналитика</h2>
+        <table>
+          <tr><th>TG</th><th>Source</th></tr>
+          ${analytics.map(a => `
+            <tr>
+              <td>${a.tg_id}</td>
+              <td>${a.source}</td>
+            </tr>
+          `).join("")}
+        </table>
+
+      </body>
+    </html>
+  `);
 });
+
+
 // ================== START ==================
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
