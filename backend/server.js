@@ -27,7 +27,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const TG_TOKEN = process.env.TG_TOKEN;
 const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
 const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
-app.post("/telegram", async (req, res) => {
+app.post("/tg", async (req, res) => {
   console.log("📩 TG UPDATE:", JSON.stringify(req.body));
 
   try {
