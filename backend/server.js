@@ -249,80 +249,96 @@ app.post("/tg", async (req, res) => {
     }
   }
 });
-app.post("/yoomoney", express.urlencoded({ extended: false }), async (req, res) => {
+app.post("/yoomoney", async (req, res) => {
   try {
     const {
       notification_type,
       operation_id,
       amount,
-      currency,
-      datetime,
-      sender,
-      codepro,
+      withdraw_amount,
       label,
-      sha1_hash
+      sender,
+      sha1_hash,
+      operation_label,
+      datetime,
+      codepro,
+      currency,
+      unaccepted,
     } = req.body;
 
-    const secret = process.env.YOOMONEY_SECRET;
-
-    const checkString =
-      notification_type + "&" +
-      operation_id + "&" +
-      amount + "&" +
-      currency + "&" +
-      datetime + "&" +
-      sender + "&" +
-      codepro + "&" +
-      secret + "&" +
-      label;
-
-    const hash = crypto
-      .createHash("sha1")
-      .update(checkString)
-      .digest("hex");
-
-    if (hash !== sha1_hash) {
-      return res.status(403).send("Invalid hash");
-    }
-
-    if (Number(amount) !== 100) {
+    // Проверяем сумму (1 рубль)
+    if (Number(amount) !== 1) {
       return res.status(400).send("Wrong amount");
     }
 
-    // ищем платёж
-    const { data: payment } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("payment_id", label)
-      .single();
+    // label = chatId пользователя
+    const chatId = label;
+    if (!chatId) {
+      return res.status(400).send("No label");
+    }
 
-    if (!payment || payment.status !== "pending") {
+    // 🔒 Проверка: есть ли уже активный код
+    const { data: activeCode } = await supabase
+      .from("gifts")
+      .select("*")
+      .eq("tg_user_id", chatId)
+      .eq("is_used", false)
+      .limit(1);
+
+    if (activeCode && activeCode.length > 0) {
+      await sendTG(
+        chatId,
+        "❌ У вас уже есть активный код.\nИспользуйте его перед покупкой нового."
+      );
       return res.send("OK");
     }
 
-    // генерируем код
+    // 🎁 Берём СВОБОДНЫЙ подарок
+    const { data: gift } = await supabase
+      .from("gifts")
+      .select("*")
+      .is("code", null)
+      .limit(1)
+      .single();
+
+    if (!gift) {
+      await sendTG(chatId, "❌ Подарки закончились 😞");
+      return res.send("OK");
+    }
+
+    // 🔑 Генерация кода
     const code = crypto.randomUUID().slice(0, 8).toUpperCase();
 
-    await supabase.from("gifts").insert({
-      code,
-      is_used: false,
-      tg_user_id: payment.tg_user_id
-    });
-
     await supabase
-      .from("payments")
-      .update({ status: "paid" })
-      .eq("id", payment.id);
-
-    // отправляем код в Telegram
-    await fetch(`${TG_API}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: payment.tg_user_id,
-        text: `🎉 Оплата прошла успешно!\n\nВаш секретный ключ:\n🔑 ${code}\n\nВведите его на сайте и откройте подарок 🎁`
+      .from("gifts")
+      .update({
+        code,
+        tg_user_id: chatId,
+        is_used: false,
+        created_at: new Date().toISOString(),
       })
-    });
+      .eq("id", gift.id);
+
+    // ⏱ Автосгорание через 5 минут
+    setTimeout(async () => {
+      await supabase
+        .from("gifts")
+        .update({ code: null, tg_user_id: null })
+        .eq("id", gift.id)
+        .eq("is_used", false);
+    }, 5 * 60 * 1000);
+
+    // 📩 Отправка пользователю
+    await sendTG(
+      chatId,
+      🎉 <b>Оплата успешна!</b>\n\nВаш секретный код:\n\n<b>${code}</b>\n\nВведите его на сайте 🎁
+    );
+
+    // 📊 Уведомление админу
+    await sendTG(
+      process.env.ADMIN_TG_ID,
+      💰 Оплата 1 ₽\n👤 User ID: ${chatId}\n🔑 Код: ${code}
+    );
 
     res.send("OK");
   } catch (e) {
@@ -330,7 +346,6 @@ app.post("/yoomoney", express.urlencoded({ extended: false }), async (req, res) 
     res.status(500).send("ERROR");
   }
 });
-
 // ===== START =====
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
