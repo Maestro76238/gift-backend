@@ -152,11 +152,13 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file" });
 
     const ext = req.file.originalname.split(".").pop();
-    const safeName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const safeName = ${Date.now()}-${crypto.randomUUID()}.${ext};
 
     const { error: uploadError } = await supabase.storage
       .from("gift-files")
-      .upload(safeName, req.file.buffer, { contentType: req.file.mimetype });
+      .upload(safeName, req.file.buffer, {
+        contentType: req.file.mimetype,
+      });
 
     if (uploadError) throw uploadError;
 
@@ -170,37 +172,7 @@ app.post("/api/create-gift", upload.single("file"), async (req, res) => {
 
     res.json({ success: true, code });
   } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ================== GET GIFT ==================
-app.get("/api/get-gift/:code", async (req, res) => {
-  try {
-    const code = req.params.code.toUpperCase();
-
-    const { data, error } = await supabase
-      .from("gifts")
-      .select("*")
-      .eq("code", code)
-      .single();
-
-    if (!data || error) {
-      return res.status(404).json({ error: "Invalid code" });
-    }
-
-    if (data.is_used) {
-      return res.status(400).json({ error: "Code already used" });
-    }
-
-    const { data: signed } = await supabase.storage
-      .from("gift-files")
-      .createSignedUrl(data.file_path, 60 * 60 * 24);
-
-    await supabase.from("gifts").update({ is_used: true }).eq("id", data.id);
-
-    res.json({ gift_url: signed.signedUrl });
-  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });
