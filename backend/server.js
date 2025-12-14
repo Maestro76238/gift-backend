@@ -15,7 +15,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 
 const TG_TOKEN = process.env.TG_TOKEN;
-const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
+
 
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
