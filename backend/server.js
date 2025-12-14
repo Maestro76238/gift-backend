@@ -23,6 +23,10 @@ const supabase = createClient(
 // ================== MULTER ==================
 const upload = multer({ storage: multer.memoryStorage() });
 
+// ================== TELEGRAM ==================
+const TG_TOKEN = process.env.TG_TOKEN;
+const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 
 // ================== HEALTH ==================
 app.get("/", (_, res) => res.send("Backend is alive ✅"));
@@ -94,10 +98,6 @@ app.get("/api/get-gift/:code", async (req, res) => {
 // ===============================
 // TELEGRAM BOT (STABLE VERSION)
 // ===============================
-
-const TG_TOKEN = process.env.TG_TOKEN;
-const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
-const TG_API = https://api.telegram.org/bot${TG_TOKEN};
 
 app.post("/telegram", async (req, res) => {
   try {
