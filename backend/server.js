@@ -88,27 +88,55 @@ app.post("/tg", async (req, res) => {
         });
       }
 
-      // BUY (пока заглушка)
-      if (cb.data === "BUY") {
-        await fetch(`${TG_API}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text:
-              "💳 Покупка ключа\n\n" +
-              "Оплата будет подключена на следующем шаге.",
-          }),
-        });
-      }
-    }
+if (cb.data === "BUY") {
+  const paymentId = crypto.randomUUID();
 
-    res.status(200).send("ok");
-  } catch (err) {
-    console.error("TG ERROR:", err);
-    res.status(200).send("ok");
-  }
-});
+  const payUrl =
+    "https://yoomoney.ru/quickpay/confirm.xml" +
+    "?receiver=" + process.env.YOOMONEY_WALLET +
+    "&quickpay-form=button" +
+    "&paymentType=AC" +
+    "&sum=100" +
+    "&label=" + paymentId;
+
+  // сохраняем платёж
+  await supabase.from("payments").insert({
+    id: paymentId,
+    tg_id: chatId,
+    amount: 100,
+    status: "pending",
+  });
+
+  // ❗ ГЛАВНОЕ — РЕДАКТИРУЕМ СООБЩЕНИЕ
+  await fetch(`${TG_API}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: cb.message.message_id,
+      text: "💳 Оплатите секретный ключ 👇",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "💰 Оплатить 100 ₽",
+              url: payUrl,
+            },
+          ],
+        ],
+      },
+    }),
+  });
+
+  // авто-сгорание через 5 минут
+  setTimeout(async () => {
+    await supabase
+      .from("payments")
+      .update({ status: "expired" })
+      .eq("id", paymentId)
+      .eq("status", "pending");
+  }, 5 * 60 * 1000);
+}
 
 // ================== HEALTH ==================
 app.get("/", (_, res) => res.send("Backend is alive ✅"));
@@ -248,61 +276,9 @@ app.post("/telegram", async (req, res) => {
         });
       }
 
-      // ===== BUY =====
 
 
-
-    if (cb.data === "BUY") {
-  const paymentId = crypto.randomUUID();
-
-  const payUrl =
-    "https://yoomoney.ru/quickpay/confirm.xml" +
-    "?receiver=" + process.env.YOOMONEY_WALLET +
-    "&quickpay-form=button" +
-    "&paymentType=AC" +
-    "&sum=100" +
-    "&label=" + paymentId;
-
-  // сохраняем платёж
-  await supabase.from("payments").insert({
-    id: paymentId,
-    tg_id: chatId,
-    amount: 100,
-    status: "pending",
-  });
-
-  // ❗ ГЛАВНОЕ — РЕДАКТИРУЕМ СООБЩЕНИЕ
-  await fetch(`${TG_API}/editMessageText`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      message_id: cb.message.message_id,
-      text: "💳 Оплатите секретный ключ 👇",
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "💰 Оплатить 100 ₽",
-              url: payUrl,
-            },
-          ],
-        ],
-      },
-    }),
-  });
-
-  // авто-сгорание через 5 минут
-  setTimeout(async () => {
-    await supabase
-      .from("payments")
-      .update({ status: "expired" })
-      .eq("id", paymentId)
-      .eq("status", "pending");
-  }, 5 * 60 * 1000);
-}
-
-
+ 
 
 app.post("/yoomoney", express.urlencoded({ extended: true }), async (req, res) => {
   const { label, amount } = req.body;
