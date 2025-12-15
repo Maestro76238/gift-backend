@@ -223,7 +223,7 @@ app.get("/admin", checkAdmin, async (req, res) => {
     mskNow.setHours(0, 0, 0, 0);
 
     const startOfday = new Date(
-      mskNow.getTime() - 3 * 60 * 60 * 1000
+      mskNow.getTime() - mskOffset
     ).toISOString();
 
     const { data: orders, error: ordersError } = await supabase
