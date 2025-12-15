@@ -211,7 +211,6 @@ const checkAdmin = (req, res, next) => {
   }
 
   next();
-  console.log("ADMIN DATE:", startOfDay);
 };
 
 app.get("/admin", checkAdmin, async (req, res) => {
