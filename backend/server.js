@@ -469,34 +469,40 @@ app.post(
     try {
       const { code } = req.body;
 
-      if (!code || !req.file) {
-        return res.status(400).json({ error: "Нет кода или файла" });
+      if (!req.file || !code) {
+        return res.status(400).json({ error: "Нет файла или кода" });
       }
 
-      const ext = path.extname(req.file.originalname);
-      const fileName = `gift_${code}_${Date.now()}${ext}`;
+      const ext = req.file.originalname.split(".").pop();
+      const fileName = gift_${code}_${Date.now()}.${ext};
 
-      // загружаем файл
+      // 1️⃣ грузим файл
       const { error: uploadError } = await supabase.storage
-        .from("gift-files")
+        .from("gifts")
         .upload(fileName, req.file.buffer, {
           contentType: req.file.mimetype,
+          upsert: true,
         });
 
       if (uploadError) throw uploadError;
 
-      // сохраняем путь в БД
-      const { error: dbError } = await supabase
+      // 2️⃣ получаем публичную ссылку
+      const { data } = supabase.storage
         .from("gifts")
-        .update({ file_path: true })
+        .getPublicUrl(fileName);
+
+      // 3️⃣ 🔥 ПРИВЯЗЫВАЕМ ФАЙЛ К КОДУ
+      const { error: updateError } = await supabase
+        .from("gifts")
+        .update({ file_url: data.publicUrl })
         .eq("code", code);
 
-      if (dbError) throw dbError;
+      if (updateError) throw updateError;
 
       res.json({ success: true });
     } catch (e) {
       console.error("ATTACH FILE ERROR:", e);
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: "Ошибка привязки файла" });
     }
   }
 );
