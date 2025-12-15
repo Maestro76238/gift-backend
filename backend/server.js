@@ -211,7 +211,7 @@ const checkAdmin = (req, res, next) => {
   }
 
   next();
-  console.log("ADMIN DATE:", startOfday);
+  console.log("ADMIN DATE:", startOfDay);
 };
 
 app.get("/admin", checkAdmin, async (req, res) => {
@@ -223,7 +223,7 @@ app.get("/admin", checkAdmin, async (req, res) => {
     const mskNow = new Date(now.getTime() + mskOffset);
     mskNow.setHours(0, 0, 0, 0);
 
-    const startOfday = new Date(mskNow.getTime() - mskOffset).toISOString();
+    const startOfDay = new Date(mskNow.getTime() - mskOffset).toISOString();
 
   try {
     const { data: orders, error: ordersError } = await supabase
