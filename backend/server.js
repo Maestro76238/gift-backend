@@ -245,7 +245,7 @@ app.get("/admin", checkAdmin, async (req, res) => {
        .gte("created_at", startOfDay);
 
     const totalSales = paidOrders?.length || 0;
-    const totalSum = paidOrders?.reduce((s, o) => s + Number(o.amount⠞⠟⠺⠵⠵⠞⠺⠟⠞⠺0;
+    const totalSum = paidOrders?.reduce((s, o) => s + Number(o.amount || 0), 0) || 0;
 
          // Активированные коды
     const { data: usedCodes } = await supabase
@@ -282,6 +282,21 @@ app.get("/admin", checkAdmin, async (req, res) => {
     });
 
     res.send(`
+      <h2>📊 Статистика за сегодня</h2>
+      <ul>
+        <li>💰 Сумма продаж: <b>${totalSum} ₽</b></li>
+        <li>🧾 Оплачено заказов: <b>${totalSales}</b></li>
+        <li>🔑 Активировано кодов: <b>${usedCodes?.length || 0}</b></li>
+        <li>🔥 Сгорело кодов: <b>${burnedCodes?.length || 0}</b></li>
+      </ul>
+
+      <h3>📣 Источники трафика</h3>
+      <ul>
+        <li>Reels: ${traffic.reels}</li>
+        <li>TikTok: ${traffic.tiktok}</li>
+        <li>Shorts: ${traffic.shorts}</li>
+        <li>Другое: ${traffic.other}</li>
+      </ul>
       <h1>🛠 Admin Panel</h1>
 
       <h2>📦 Заказы</h2>
