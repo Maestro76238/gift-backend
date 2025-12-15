@@ -3,7 +3,10 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
+import multer from "multer";
+import path from "path";
 const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ================== APP ==================
 const app = express();
@@ -336,6 +339,7 @@ ${codes.map(c => `
   <td>${c.code}</td>
   <td>${c.is_used ? "🔥 Использован" : "✅ Активен"}</td>
   <td>
+    <button onclick="attachFile('${c.code}')">📎 Привязать файл</button>
     <button onclick="resetCode('${c.code}')">🔄 Сброс</button>
     <button onclick="deleteCode('${c.code}')">🗑 Удалить</button>
   </td>
@@ -377,6 +381,38 @@ async function resetCode(code) {
   });
   location.reload();
 }
+</script>
+<script>
+  async function attachFile(code) {
+    const input = document.createElement("input");
+    input.type = "file";
+
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("code", code);
+
+      const res = await fetch(
+        "/admin/attach-file?tg_id=" + tgId,
+        {
+          method: "POST",
+          body: form,
+        }
+      );
+
+      if (res.ok) {
+        alert("Файл привязан");
+        location.reload();
+      } else {
+        alert("Ошибка привязки файла");
+      }
+    };
+
+    input.click();
+  }
 </script>
 
 </body>
@@ -424,6 +460,45 @@ app.post("/admin/reset-code", checkAdmin, async (req, res) => {
   await supabase.from("gifts").update({ is_used: false }).eq("code", code);
   res.json({ success: true });
 });
+app.post(
+  "/admin/attach-file",
+  checkAdmin,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { code } = req.body;
+
+      if (!code || !req.file) {
+        return res.status(400).json({ error: "Нет кода или файла" });
+      }
+
+      const ext = path.extname(req.file.originalname);
+      const fileName = gift_${code}_${Date.now()}${ext};
+
+      // загружаем файл
+      const { error: uploadError } = await supabase.storage
+        .from("gift-files")
+        .upload(fileName, req.file.buffer, {
+          contentType: req.file.mimetype,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // сохраняем путь в БД
+      const { error: dbError } = await supabase
+        .from("gifts")
+        .update({ file_path: fileName })
+        .eq("code", code);
+
+      if (dbError) throw dbError;
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error("ATTACH FILE ERROR:", e);
+      res.status(500).json({ error: e.message });
+    }
+  }
+);
 // ================== START ==================
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
