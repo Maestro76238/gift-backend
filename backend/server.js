@@ -211,6 +211,7 @@ const checkAdmin = (req, res, next) => {
   }
 
   next();
+  console.log("ADMIN DATE:", startOfday);
 };
 
 app.get("/admin", checkAdmin, async (req, res) => {
@@ -219,12 +220,11 @@ app.get("/admin", checkAdmin, async (req, res) => {
     
     const mskOffset = 3 * 60 * 60 * 1000;
     
-    const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    const mskNow = new Date(now.getTime() + mskOffset);
     mskNow.setHours(0, 0, 0, 0);
 
-    const startOfday = new Date(
-      mskNow.getTime() - mskOffset
-    ).toISOString();
+    const startOfday = new Date(mskNow.getTime() - mskOffset).toISOString();
+
   try {
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
@@ -317,15 +317,55 @@ app.get("/admin", checkAdmin, async (req, res) => {
       </table>
 
       <h2>🔑 Коды</h2>
-      <table border="1">
-        <tr><th>Code</th><th>Used</th></tr>
-        ${safeCodes.map(c => `
-          <tr>
-            <td>${c.code}</td>
-            <td>${c.is_used ? "✅" : "❌"}</td>
-          </tr>
-        `).join("")}
-      </table>
+<h2>🔑 Коды</h2>
+
+<button onclick="createCode()">➕ Создать код</button>
+
+<table border="1">
+  <tr>
+    <th>Код</th>
+    <th>Статус</th>
+    <th>Действия</th>
+  </tr>
+
+  ${codes.map(c => `
+    <tr>
+      <td>${c.code}</td>
+      <td>${c.is_used ? "🔥 Использован" : "✅ Активен"}</td>
+      <td>
+        <button onclick="resetCode('${c.code}')">🔄 Сброс</button>
+        <button onclick="deleteCode('${c.code}')">🗑 Удалить</button>
+      </td>
+    </tr>
+  `).join("")}
+</table>
+
+<script>
+  const tgId = new URLSearchParams(window.location.search).get("tg_id");
+
+  async function createCode() {
+    const res = await fetch("/admin/create-code?tg_id=" + tgId, { method: "POST" });
+    location.reload();
+  }
+
+  async function deleteCode(code) {
+    await fetch("/admin/delete-code?tg_id=" + tgId, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code })
+    });
+    location.reload();
+  }
+
+  async function resetCode(code) {
+    await fetch("/admin/reset-code?tg_id=" + tgId, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code })
+    });
+    location.reload();
+  }
+</script>
 
       <h2>📊 Аналитика</h2>
       <table border="1">
@@ -358,10 +398,22 @@ app.post("/admin/create-code", checkAdmin, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 app.post("/admin/delete-code", checkAdmin, async (req, res) => {
   const { code } = req.body;
 
   await supabase.from("gifts").delete().eq("code", code);
+  res.json({ success: true });
+});
+
+app.post("/admin/reset-code", checkAdmin, async (req, res) => {
+  const { code } = req.body;
+
+  await supabase
+    .from("gifts")
+    .update({ is_used: false })
+    .eq("code", code);
+
   res.json({ success: true });
 });
 
