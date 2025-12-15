@@ -9,6 +9,7 @@ const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true}));
 
 
 // ================== ENV ==================
@@ -346,9 +347,18 @@ ${codes.map(c => `
 const tgId = new URLSearchParams(window.location.search).get("tg_id");
 
 async function createCode() {
-  await fetch("/admin/create-code?tg_id=" + tgId, { method: "POST" });
+  console.log("TG ID:", tgId);
+
+  const res = await fetch("/admin/create-code?tg_id=" + tgId, {
+    method: "POST"
+  });
+
+  const data = await res.json();
+  console.log("CREATE CODE RESPONSE:", data);
+
   location.reload();
 }
+
 
 async function deleteCode(code) {
   await fetch("/admin/delete-code?tg_id=" + tgId, {
@@ -381,11 +391,28 @@ async function resetCode(code) {
 // ================== ADMIN ACTIONS ==================
 
 app.post("/admin/create-code", checkAdmin, async (req, res) => {
-  const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-  await supabase.from("gifts").insert({ code, is_used: false });
-  res.json({ success: true });
-});
+  try {
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
 
+    const { error } = await supabase
+      .from("gifts")
+      .insert({
+        code,
+        is_used: false,
+      });
+
+    if (error) {
+      console.error("CREATE CODE ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log("CODE CREATED:", code);
+    res.json({ success: true, code });
+  } catch (e) {
+    console.error("CREATE CODE EXCEPTION:", e);
+    res.status(500).json({ error: "Create code failed" });
+  }
+});
 app.post("/admin/delete-code", checkAdmin, async (req, res) => {
   const { code } = req.body;
   await supabase.from("gifts").delete().eq("code", code);
