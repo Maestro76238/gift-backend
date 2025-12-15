@@ -216,10 +216,13 @@ const checkAdmin = (req, res, next) => {
 app.get("/admin", checkAdmin, async (req, res) => {
   try {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
     
-    const mskOffset = 3 * 60 * 1000;
-    const startOfday = new Date(today.getTime() - mskOffset).toISOString();
+    const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    mskNow.setHours(0, 0, 0, 0);
+
+    const startOfday = new Date(
+      mskNow.getTime() - 3 * 60 * 60 * 1000
+    ).toISOString();
 
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
