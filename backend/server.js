@@ -215,6 +215,12 @@ const checkAdmin = (req, res, next) => {
 
 app.get("/admin", checkAdmin, async (req, res) => {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const mskOffset = 3 * 60 * 1000;
+    const startOfday = new Date(today.getTime() - maskOffset).tolISOString();
+
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select("id, tg_id, status")
@@ -231,6 +237,50 @@ app.get("/admin", checkAdmin, async (req, res) => {
     const safeOrders = orders || [];
     const safeCodes  = codes || [];
     const safeAnalytics = analytics || [];
+          // ===== 📊 DAILY STATS =====
+    const { data: paidOrders } = await supabase
+       .from("orders")
+       .select("amount")
+       .eq("status", "paid")
+       .gte("created_at", startOfDay);
+
+    const totalSales = paidOrders?.length || 0;
+    const totalSum = paidOrders?.reduce((s, o) => s + Number(o.amount⠞⠟⠺⠵⠵⠞⠺⠟⠞⠺0;
+
+         // Активированные коды
+    const { data: usedCodes } = await supabase
+       .from("gifts")
+       .select("id")
+       .eq("is_used", true)
+       .gte("updated_at", startOfDay);
+
+        // Сгоревшие коды
+    const { data: burnedCodes } = await supabase
+       .from("orders")
+       .select("id")
+       .eq("status", "expired")
+       .gte("created_at", startOfDay);
+
+       // Аналитика
+    const { data: sources } = await supabase
+       .from("analytics")
+       .select("source")
+       .gte("created_at", startOfDay);
+
+    const traffic = {
+       reels: 0,
+       tiktok: 0,
+       shorts: 0,
+       other: 0,
+    };
+
+    (sources || []).forEach(s => {
+       if (s.source === "reels") traffic.reels++;
+       else if (s.source === "tiktok") traffic.tiktok++;
+       else if (s.source === "shorts") traffic.shorts++;
+       else traffic.other++;
+    });
+
     res.send(`
       <h1>🛠 Admin Panel</h1>
 
