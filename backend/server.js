@@ -506,8 +506,6 @@ app.get("/api/get-gift/:code", async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
 
-    console.log("🎁 CHECK GIFT CODE:", code);
-
     const { data: gift, error } = await supabase
       .from("gifts")
       .select("*")
@@ -527,11 +525,43 @@ app.get("/api/get-gift/:code", async (req, res) => {
     }
 
     res.json({
-      gift_url: gift.file_url
+      gift_url: gift.file_url,
     });
-
   } catch (e) {
     console.error("GET GIFT ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+//===================USE======================
+app.post("/api/use-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+
+    const { data: gift, error } = await supabase
+      .from("gifts")
+      .select("id, is_used")
+      .eq("code", code)
+      .single();
+
+    if (error || !gift) {
+      return res.status(404).json({ error: "Invalid code" });
+    }
+
+    if (gift.is_used) {
+      return res.status(400).json({ error: "Already used" });
+    }
+
+    await supabase
+      .from("gifts")
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString()
+      })
+      .eq("id", gift.id);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("USE GIFT ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
