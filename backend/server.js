@@ -215,7 +215,7 @@ const checkAdmin = (req, res, next) => {
 
 app.get("/admin", checkAdmin, async (req, res) => {
   try {
-    const today = new Date();
+    const now = new Date();
     
     const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
     mskNow.setHours(0, 0, 0, 0);
