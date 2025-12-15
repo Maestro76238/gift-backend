@@ -214,7 +214,7 @@ const checkAdmin = (req, res, next) => {
 };
 
 app.get("/admin", checkAdmin, async (req, res) => {
-  try {
+
     const now = new Date();
     
     const mskOffset = 3 * 60 * 60 * 1000;
@@ -225,7 +225,7 @@ app.get("/admin", checkAdmin, async (req, res) => {
     const startOfday = new Date(
       mskNow.getTime() - mskOffset
     ).toISOString();
-
+  try {
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select("id, tg_id, status")
@@ -342,6 +342,27 @@ app.get("/admin", checkAdmin, async (req, res) => {
     console.error("ADMIN ERROR:", e);
     res.status(500).send("Admin error");
   }
+});
+
+app.post("/admin/create-code", checkAdmin, async (req, res) => {
+  try {
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    await supabase.from("gifts").insert({
+      code,
+      is_used: false
+    });
+
+    res.json({ success: true, code });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post("/admin/delete-code", checkAdmin, async (req, res) => {
+  const { code } = req.body;
+
+  await supabase.from("gifts").delete().eq("code", code);
+  res.json({ success: true });
 });
 
 // ================== START ==================
