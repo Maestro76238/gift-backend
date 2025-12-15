@@ -566,6 +566,8 @@ app.post("/api/use-gift/:code", async (req, res) => {
   }
 });
 // ================== START ==================
+const PORT = process.env.PORT || 10000;
+
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
 });
