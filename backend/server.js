@@ -215,27 +215,29 @@ const checkAdmin = (req, res, next) => {
 
 app.get("/admin", checkAdmin, async (req, res) => {
   try {
-    const { data: orders = [] } = await supabase
+    const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select("id, tg_id, status")
       .order("created_at", { ascending: false });
 
-    const { data: codes = [] } = await supabase
+    const { data: codes, error: codesError} = await supabase
       .from("gifts")
       .select("code, is_used")
       .order("created_at", { ascending: false });
 
-    const { data: analytics = [] } = await supabase
+    const { data: analytics, error: analyticsError } = await supabase
       .from("analytics")
       .select("tg_id, source");
-
+    const safeOrders = orders || [];
+    const safeCodes  = codes || [];
+    const safeAnalytics = analytics || [];
     res.send(`
       <h1>🛠 Admin Panel</h1>
 
       <h2>📦 Заказы</h2>
       <table border="1">
         <tr><th>ID</th><th>TG</th><th>Status</th></tr>
-        ${orders.map(o => `
+        ${safeOrders.map(o => `
           <tr>
             <td>${o.id}</td>
             <td>${o.tg_id ?? "-"}</td>
@@ -247,7 +249,7 @@ app.get("/admin", checkAdmin, async (req, res) => {
       <h2>🔑 Коды</h2>
       <table border="1">
         <tr><th>Code</th><th>Used</th></tr>
-        ${codes.map(c => `
+        ${safeCodes.map(c => `
           <tr>
             <td>${c.code}</td>
             <td>${c.is_used ? "✅" : "❌"}</td>
@@ -258,7 +260,7 @@ app.get("/admin", checkAdmin, async (req, res) => {
       <h2>📊 Аналитика</h2>
       <table border="1">
         <tr><th>TG</th><th>Source</th></tr>
-        ${analytics.map(a => `
+        ${safeAnalytics.map(a => `
           <tr>
             <td>${a.tg_id}</td>
             <td>${a.source}</td>
