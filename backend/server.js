@@ -178,7 +178,7 @@ app.post("/yookassa", async (req, res) => {
     await supabase.from("gifts").insert({
       code,
       is_used: false,
-      file_path: false
+      file_url: null
     });
 
     await supabase
@@ -430,12 +430,13 @@ async function resetCode(code) {
 app.post("/admin/create-code", checkAdmin, async (req, res) => {
   try {
     const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
+    
     const { error } = await supabase
       .from("gifts")
       .insert({
         code,
         is_used: false,
+        file_url: null
       });
 
     if (error) {
