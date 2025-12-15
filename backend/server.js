@@ -197,6 +197,166 @@ app.post("/yookassa", async (req, res) => {
     res.send("ok");
   }
 });
+// ================== ADMIN PANEL (FULL) ==================
+
+// 🔐 ADMIN MIDDLEWARE
+function checkAdmin(req, res, next) {
+  const tgId = String(req.query.tg_id || "");
+  const adminId = String(process.env.ADMIN_TG_ID || "");
+
+  console.log("ADMIN CHECK:", { tg: tgId, admin: adminId });
+
+  if (!tgId || tgId !== adminId) {
+    return res.status(403).send("Admin access denied");
+  }
+
+  next();
+}
+
+// ================== ADMIN PAGE ==================
+app.get("/admin", checkAdmin, async (req, res) => {
+  try {
+    // ====== DATE (TODAY, MSK) ======
+    const now = new Date();
+    const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    mskNow.setHours(0, 0, 0, 0);
+
+    const startOfDay = new Date(
+      mskNow.getTime() - 3 * 60 * 60 * 1000
+    ).toISOString();
+
+    // ====== DATA ======
+    const { data: ordersRaw } = await supabase
+      .from("orders")
+      .select("id, tg_id, status, amount, created_at")
+      .order("created_at", { ascending: false });
+
+    const { data: codesRaw } = await supabase
+      .from("gifts")
+      .select("code, is_used, created_at")
+      .order("created_at", { ascending: false });
+
+    const { data: analyticsRaw } = await supabase
+      .from("analytics")
+      .select("tg_id, source, created_at");
+
+    const orders = ordersRaw || [];
+    const codes = codesRaw || [];
+    const analytics = analyticsRaw || [];
+
+    // ====== TODAY STATS ======
+    const todayOrders = orders.filter(
+      o => o.status === "paid" && o.created_at >= startOfDay
+    );
+
+    const totalSales = todayOrders.length;
+    const totalSum = todayOrders.reduce(
+      (sum, o) => sum + Number(o.amount || 0),
+      0
+    );
+
+    const usedCodes = codes.filter(
+      c => c.is_used && c.created_at >= startOfDay
+    );
+
+    const burnedCodes = codes.filter(
+      c => !c.is_used && c.created_at < startOfDay
+    );
+
+    const traffic = {
+      reels: 0,
+      tiktok: 0,
+      shorts: 0,
+      other: 0,
+    };
+
+    analytics
+      .filter(a => a.created_at >= startOfDay)
+      .forEach(a => {
+        if (a.source === "reels") traffic.reels++;
+        else if (a.source === "tiktok") traffic.tiktok++;
+        else if (a.source === "shorts") traffic.shorts++;
+        else traffic.other++;
+      });
+
+    // ====== HTML ======
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Admin Panel</title>
+<style>
+body { font-family: Arial; padding: 20px; }
+table { border-collapse: collapse; margin-bottom: 20px; }
+td, th { border: 1px solid #ccc; padding: 6px 10px; }
+button { margin-right: 5px; }
+</style>
+</head>
+<body>
+
+<h1>🛠 Admin Panel</h1>
+
+<h2>📊 Статистика за сегодня (МСК)</h2>
+<ul>
+  <li>💰 Сумма продаж: <b>${totalSum} ₽</b></li>
+  <li>🧾 Оплачено заказов: <b>${totalSales}</b></li>
+  <li>🔑 Активировано кодов: <b>${usedCodes.length}</b></li>
+  <li>🔥 Сгорело кодов: <b>${burnedCodes.length}</b></li>
+</ul>
+
+<h3>📣 Источники трафика</h3>
+<ul>
+  <li>Reels: ${traffic.reels}</li>
+  <li>TikTok: ${traffic.tiktok}</li>
+  <li>Shorts: ${traffic.shorts}</li>
+  <li>Другое: ${traffic.other}</li>
+</ul>
+
+<h2>📦 Заказы</h2>
+<table>
+<tr><th>ID</th><th>TG</th><th>Status</th></tr>
+${orders.map(o => `
+<tr>
+  <td>${o.id}</td>
+  <td>${o.tg_id || "-"}</td>
+  <td>${o.status}</td>
+</tr>
+`).join("")}
+</table>
+
+<h2>🔑 Коды</h2>
+<button onclick="createCode()">➕ Создать код</button>
+
+<table>
+<tr><th>Код</th><th>Статус</th><th>Действия</th></tr>
+${codes.map(c => `
+<tr>
+  <td>${c.code}</td>
+  <td>${c.is_used ? "🔥 Использован" : "✅ Активен"}</td>
+  <td>
+    <button onclick="resetCode('${c.code}')">🔄 Сброс</button>
+    <button onclick="deleteCode('${c.code}')">🗑 Удалить</button>
+  </td>
+</tr>
+`).join("")}
+</table>
+
+<script>
+const tgId = new URLSearchParams(window.location.search).get("tg_id");
+
+async function createCode() {
+  await fetch("/admin/create-code?tg_id=" + tgId, { method: "POST" });
+  location.reload();
+}
+
+async function deleteCode(code) {
+  await fetch("/admin/delete-code?tg_id=" + tgId, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code })
+  });
+  location.reload();
 }
 
 async function resetCode(code) {
@@ -237,7 +397,6 @@ app.post("/admin/reset-code", checkAdmin, async (req, res) => {
   await supabase.from("gifts").update({ is_used: false }).eq("code", code);
   res.json({ success: true });
 });
-
 // ================== START ==================
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
