@@ -16,7 +16,6 @@ app.use(express.urlencoded({ extended: true}));
 
 
 // ================== ENV ==================
-const PORT = process.env.PORT || 10000;
 
 const TG_TOKEN = process.env.TG_TOKEN;
 
@@ -565,6 +564,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 
