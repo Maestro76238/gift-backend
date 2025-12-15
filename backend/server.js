@@ -197,185 +197,20 @@ app.post("/yookassa", async (req, res) => {
     res.send("ok");
   }
 });
-const checkAdmin = (req, res, next) => {
-  const tgId = String(req.query.tg_id || "");
-  const adminId = String(process.env.ADMIN_TG_ID || "");
+}
 
-  console.log("ADMIN CHECK:", {
-    tg: tgId,
-    admin: adminId
+async function resetCode(code) {
+  await fetch("/admin/reset-code?tg_id=" + tgId, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code })
   });
-
-  if (!tgId || tgId !== adminId) {
-    return res.status(403).send("Admin error");
-  }
-
-  next();
-};
-
-app.get("/admin", checkAdmin, async (req, res) => {
-
-    const now = new Date();
-    
-    const mskOffset = 3 * 60 * 60 * 1000;
-    
-    const mskNow = new Date(now.getTime() + mskOffset);
-    mskNow.setHours(0, 0, 0, 0);
-
-    const startOfDay = new Date(mskNow.getTime() - mskOffset).toISOString();
-
-  try {
-    const { data: orders, error: ordersError } = await supabase
-      .from("orders")
-      .select("id, tg_id, status")
-      .order("created_at", { ascending: false });
-
-    const { data: codes, error: codesError} = await supabase
-      .from("gifts")
-      .select("code, is_used")
-      .order("created_at", { ascending: false });
-
-    const { data: analytics, error: analyticsError } = await supabase
-      .from("analytics")
-      .select("tg_id, source");
-    const safeOrders = orders || [];
-    const safeCodes  = codes || [];
-    const safeAnalytics = analytics || [];
-          // ===== 📊 DAILY STATS =====
-    const { data: paidOrders } = await supabase
-       .from("orders")
-       .select("amount")
-       .eq("status", "paid")
-       .gte("created_at", startOfDay);
-
-    const totalSales = paidOrders?.length || 0;
-    const totalSum = paidOrders?.reduce((s, o) => s + Number(o.amount || 0), 0) || 0;
-
-         // Активированные коды
-    const { data: usedCodes } = await supabase
-       .from("gifts")
-       .select("id")
-       .eq("is_used", true)
-       .gte("updated_at", startOfDay);
-
-        // Сгоревшие коды
-    const { data: burnedCodes } = await supabase
-       .from("orders")
-       .select("id")
-       .eq("status", "expired")
-       .gte("created_at", startOfDay);
-
-       // Аналитика
-    const { data: sources } = await supabase
-       .from("analytics")
-       .select("source")
-       .gte("created_at", startOfDay);
-
-    const traffic = {
-       reels: 0,
-       tiktok: 0,
-       shorts: 0,
-       other: 0,
-    };
-
-    (sources || []).forEach(s => {
-       if (s.source === "reels") traffic.reels++;
-       else if (s.source === "tiktok") traffic.tiktok++;
-       else if (s.source === "shorts") traffic.shorts++;
-       else traffic.other++;
-    });
-
-    res.send(`
-      <h2>📊 Статистика за сегодня</h2>
-      <ul>
-        <li>💰 Сумма продаж: <b>${totalSum} ₽</b></li>
-        <li>🧾 Оплачено заказов: <b>${totalSales}</b></li>
-        <li>🔑 Активировано кодов: <b>${usedCodes?.length || 0}</b></li>
-        <li>🔥 Сгорело кодов: <b>${burnedCodes?.length || 0}</b></li>
-      </ul>
-
-      <h3>📣 Источники трафика</h3>
-      <ul>
-        <li>Reels: ${traffic.reels}</li>
-        <li>TikTok: ${traffic.tiktok}</li>
-        <li>Shorts: ${traffic.shorts}</li>
-        <li>Другое: ${traffic.other}</li>
-      </ul>
-      <h1>🛠 Admin Panel</h1>
-
-      <h2>📦 Заказы</h2>
-      <table border="1">
-        <tr><th>ID</th><th>TG</th><th>Status</th></tr>
-        ${safeOrders.map(o => `
-          <tr>
-            <td>${o.id}</td>
-            <td>${o.tg_id ?? "-"}</td>
-            <td>${o.status}</td>
-          </tr>
-        `).join("")}
-      </table>
-
-      <h2>🔑 Коды</h2>
-<h2>🔑 Коды</h2>
-
-<button onclick="createCode()">➕ Создать код</button>
-
-<table border="1">
-  <tr>
-    <th>Код</th>
-    <th>Статус</th>
-    <th>Действия</th>
-  </tr>
-
-  ${codes.map(c => `
-    <tr>
-      <td>${c.code}</td>
-      <td>${c.is_used ? "🔥 Использован" : "✅ Активен"}</td>
-      <td>
-        <button onclick="resetCode('${c.code}')">🔄 Сброс</button>
-        <button onclick="deleteCode('${c.code}')">🗑 Удалить</button>
-      </td>
-    </tr>
-  `).join("")}
-</table>
-
-<script>
-  const tgId = new URLSearchParams(window.location.search).get("tg_id");
-
-  async function createCode() {
-    const res = await fetch("/admin/create-code?tg_id=" + tgId, { method: "POST" });
-    location.reload();
-  }
-
-  async function deleteCode(code) {
-    await fetch("/admin/delete-code?tg_id=" + tgId, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code })
-    });
-    location.reload();
-  }
-
-  async function resetCode(code) {
-    await fetch("/admin/reset-code?tg_id=" + tgId, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code })
-    });
-    location.reload();
-  }
+  location.reload();
+}
 </script>
 
-      <h2>📊 Аналитика</h2>
-      <table border="1">
-        <tr><th>TG</th><th>Source</th></tr>
-        ${safeAnalytics.map(a => `
-          <tr>
-            <td>${a.tg_id}</td>
-            <td>${a.source}</td>
-          </tr>
-        `).join("")}
-      </table>
+</body>
+</html>
     `);
   } catch (e) {
     console.error("ADMIN ERROR:", e);
@@ -383,36 +218,23 @@ app.get("/admin", checkAdmin, async (req, res) => {
   }
 });
 
+// ================== ADMIN ACTIONS ==================
+
 app.post("/admin/create-code", checkAdmin, async (req, res) => {
-  try {
-    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-    await supabase.from("gifts").insert({
-      code,
-      is_used: false
-    });
-
-    res.json({ success: true, code });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+  await supabase.from("gifts").insert({ code, is_used: false });
+  res.json({ success: true });
 });
 
 app.post("/admin/delete-code", checkAdmin, async (req, res) => {
   const { code } = req.body;
-
   await supabase.from("gifts").delete().eq("code", code);
   res.json({ success: true });
 });
 
 app.post("/admin/reset-code", checkAdmin, async (req, res) => {
   const { code } = req.body;
-
-  await supabase
-    .from("gifts")
-    .update({ is_used: false })
-    .eq("code", code);
-
+  await supabase.from("gifts").update({ is_used: false }).eq("code", code);
   res.json({ success: true });
 });
 
