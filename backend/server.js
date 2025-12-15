@@ -478,7 +478,7 @@ app.post(
 
       // 1️⃣ грузим файл
       const { error: uploadError } = await supabase.storage
-        .from("gifts")
+        .from("gifts-files")
         .upload(fileName, req.file.buffer, {
           contentType: req.file.mimetype,
           upsert: true,
@@ -488,7 +488,7 @@ app.post(
 
       // 2️⃣ получаем публичную ссылку
       const { data } = supabase.storage
-        .from("gifts")
+        .from("gifts-files")
         .getPublicUrl(fileName);
 
       // 3️⃣ 🔥 ПРИВЯЗЫВАЕМ ФАЙЛ К КОДУ
