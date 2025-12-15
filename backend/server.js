@@ -474,7 +474,7 @@ app.post(
       }
 
       const ext = req.file.originalname.split(".").pop();
-      const fileName = gift_${code}_${Date.now()}.${ext};
+      const fileName = `gift_${code}_${Date.now()}.${ext}`;
 
       // 1️⃣ грузим файл
       const { error: uploadError } = await supabase.storage
