@@ -500,6 +500,40 @@ app.post(
     }
   }
 );
+// ================== CHECK GIFT CODE ==================
+app.get("/api/get-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+
+    console.log("🎁 CHECK GIFT CODE:", code);
+
+    const { data: gift, error } = await supabase
+      .from("gifts")
+      .select("*")
+      .eq("code", code)
+      .single();
+
+    if (error || !gift) {
+      return res.status(404).json({ error: "Code not found" });
+    }
+
+    if (gift.is_used) {
+      return res.status(400).json({ error: "Code already used" });
+    }
+
+    if (!gift.file_url) {
+      return res.status(400).json({ error: "Gift file not attached" });
+    }
+
+    res.json({
+      gift_url: gift.file_url
+    });
+
+  } catch (e) {
+    console.error("GET GIFT ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 // ================== START ==================
 app.listen(PORT, () => {
   console.log("🚀 Server running on", PORT);
