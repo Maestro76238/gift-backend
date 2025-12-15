@@ -178,6 +178,7 @@ app.post("/yookassa", async (req, res) => {
     await supabase.from("gifts").insert({
       code,
       is_used: false,
+      file_path: false
     });
 
     await supabase
@@ -487,7 +488,7 @@ app.post(
       // сохраняем путь в БД
       const { error: dbError } = await supabase
         .from("gifts")
-        .update({ file_path: fileName })
+        .update({ file_path: true })
         .eq("code", code);
 
       if (dbError) throw dbError;
