@@ -210,6 +210,21 @@ app.post("/yookassa", async (req, res) => {
     res.send("ok");
   }
 });
+const checkAdmin = (req, res, next) => {
+  console.log("ADMIN CHECK:", {
+    tg: tgId,
+    admin: adminId
+  });
+  const tgId = String(req.query.tg_id || "");
+  const adminId = String(process.env.ADMIN_TG_ID || "");
+  
+  if (!tgId || tgId !== adminId) {
+    return res.status(403).send("Admin error");
+  }
+  
+  next();
+};
+
 app.get("/admin", checkAdmin, async (req, res) => {
   try {
     const { data: orders = [] } = await supabase
