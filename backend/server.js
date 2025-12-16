@@ -150,9 +150,14 @@ app.post("/api/use-gift/:code", async (req, res) => {
     .update({ used: true })
     .eq("code", code)
     .eq("used", false);
+    .select();
 
   if (error) {
     return res.status(500).json({ error: error.message });
+  }
+
+  if (!data || data.lenght === 0) {
+    return res.status(404).json ({ error: "Code not found or already used" });
   }
 
   res.json({ success: true });
