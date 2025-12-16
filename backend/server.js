@@ -1,494 +1,139 @@
 import express from "express";
-import fetch from "node-fetch";
-import crypto from "crypto";
 import cors from "cors";
+import crypto from "crypto";
+import fetch from "node-fetch";
+import TelegramBot from "node-telegram-bot-api";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
-import path from "path";
-import TelegramBot from "node-telegram-bot-api";
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, {
-  polling: true,
-});
-const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
-const upload = multer({ storage: multer.memoryStorage() });
-
-process.on("unhandledRejection", err => {
-  console.error("🔥 UNHANDLED REJECTION:", err);
-});
-
-process.on("uncaughtException", err => {
-  console.error("💥 UNCAUGHT EXCEPTION:", err);
-});
+// ================== ENV ==================
+const {
+  BOT_TOKEN,
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  ADMIN_TG_ID,
+  YOOKASSA_SECRET,
+  PORT
+} = process.env;
 
 // ================== APP ==================
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true}));
-
-
-// ================== ENV ==================
-
-const TG_TOKEN = process.env.TG_TOKEN;
-
-
-const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
-const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
 // ================== SUPABASE ==================
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ================== TELEGRAM ==================
-const tgRouter = express.Router();
+// ================== TELEGRAM BOT ==================
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-tgRouter.post("/", async (req, res) => {
+async function tgSend(chatId, text) {
   try {
-    const update = req.body;
-    console.log("📩 TG UPDATE:", JSON.stringify(update));
-
-    // 👇 твоя логика бота (callback, start, кнопки)
+    await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
   } catch (e) {
-    console.error("❌ TG ERROR:", e);
+    console.error("TG SEND ERROR:", e.message);
   }
+}
 
-  // 🔥 ВСЕГДА отвечаем
-  res.send("ok");
-});
-
-// ❗ TG получает ТОЛЬКО JSON
-app.use("/tg", express.json(), tgRouter);
-
-//======heal==============
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    time: new Date().toISOString()
-  });
-});
-// ================== TELEGRAM WEBHOOK ==================
-app.post("/tg", async (req, res) => {
-  try {
-    const update = req.body;
-    console.log("TG UPDATE:", JSON.stringify(update));
-
-    // /start
-    if (update.message?.text === "/start") {
-      const chatId = update.message.chat.id;
-
-      await tgSend(
-        chatId,
-        "🎄 <b>С наступающим Новым годом!</b>\n\nЗдесь вы можете купить секретный ключ 🔑 и открыть подарок 🎁\n\n<b>Выберите действие 👇</b>",
-        {
-          inline_keyboard: [
-            [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
-            [{ text: "🔑 Купить секретный ключ", callback_data: "BUY" }],
-          ],
-        }
-      );
-    }
-
-    // кнопки
-    if (update.callback_query) {
-      const chatId = update.callback_query.message.chat.id;
-      const tgId = update.callback_query.from.id;
-      const action = update.callback_query.data;
-
-      // INFO
-      if (action === "INFO") {
-        await tgSend(
-          chatId,
-          "🔑 Вы покупаете секретный ключ\n🎁 Вводите его на сайте\n🔥 Код одноразовый и сгорает после использования"
-        );
-      }
-
-      // BUY
-      if (action === "BUY") {
-        // создаём заказ
-        const orderId = crypto.randomUUID();
-
-        await supabase.from("orders").insert({
-          id: orderId,
-          tg_id: tgId,
-          status: "pending",
-          created_at: new Date().toISOString(),
-        });
-
-        // создаём оплату ЮKassa
-        const payment = await fetch("https://api.yookassa.ru/v3/payments", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotence-Key": crypto.randomUUID(),
-            Authorization:
-              "Basic " +
-              Buffer.from(
-                `${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`
-              ).toString("base64"),
-          },
-          body: JSON.stringify({
-            amount: {
-              value: "1.00",
-              currency: "RUB",
-            },
-            confirmation: {
-              type: "redirect",
-              return_url: "https://google.com",
-            },
-            capture: true,
-            description: "Секретный ключ",
-            metadata: {
-              order_id: orderId,
-              tg_id: tgId,
-            },
-          }),
-        }).then((r) => r.json());
-
-        await supabase
-          .from("orders")
-          .update({ payment_id: payment.id })
-          .eq("id", orderId);
-
-        await tgSend(chatId, "💳 Оплатите ключ по кнопке ниже 👇", {
-          inline_keyboard: [
-            [
-              {
-                text: "Оплатить 💳",
-                url: payment.confirmation.confirmation_url,
-              },
-            ],
-          ],
-        });
-      }
-    }
-
-    res.send("ok");
-  } catch (e) {
-    console.error("TG ERROR:", e);
-    res.send("ok");
-  }
-});
-
-// ================== YOOKASSA WEBHOOK ==================
-const ykRouter = express.Router();
-
-ykRouter.post(
-  "/",
-  express.json(), // ❗ ТОЛЬКО JSON
-  async (req, res) => {
-    try {
-      const event = req.body;
-      console.log("📩 YOOKASSA WEBHOOK:", JSON.stringify(event, null, 2));
-
-      if (event.event !== "payment.succeeded") {
-        return res.send("ok");
-      }
-
-      const payment = event.object;
-      const orderId = payment?.metadata?.order_id;
-      const tgId = payment?.metadata?.tg_id;
-
-      if (!orderId || !tgId) {
-        console.warn("⚠️ Нет metadata");
-        return res.send("ok");
-      }
-
-      // 🔑 генерация кода
-      const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-      await supabase.from("gifts").insert({
-        code,
-        is_used: false,
-        file_path: null
-      });
-
-      await supabase
-        .from("orders")
-        .update({ status: "paid" })
-        .eq("id", orderId);
-
-      await tgSend(
-        tgId,
-        "✅ <b>Оплата прошла!</b>\n\nВаш код:\n<code>" + code + "</code>"
-      );
-
-      await tgSend(
-        ADMIN_TG_ID,
-        "💰 Оплата\nTG: " + tgId + "\nКод: " + code
-      );
-    } catch (e) {
-      console.error("❌ YOOKASSA ERROR:", e);
-    }
-
-    // 🔥 ВСЕГДА отвечаем
-    res.send("ok");
-  }
-);
-
-app.use("/yookassa", ykRouter);
-// ================== ADMIN PANEL (FULL) ==================
-
-// 🔐 ADMIN MIDDLEWARE
+// ================== ADMIN CHECK ==================
 function checkAdmin(req, res, next) {
   const tgId = String(req.query.tg_id || "");
-  const adminId = String(process.env.ADMIN_TG_ID || "");
-
-  console.log("ADMIN CHECK:", { tg: tgId, admin: adminId });
-
-  if (!tgId || tgId !== adminId) {
+  if (!tgId || tgId !== String(ADMIN_TG_ID)) {
     return res.status(403).send("Admin access denied");
   }
-
   next();
 }
 
-// ================== ADMIN PAGE ==================
-app.get("/admin", checkAdmin, async (req, res) => {
+// ================== YOOKASSA WEBHOOK ==================
+app.post("/yookassa", async (req, res) => {
   try {
-    // ====== DATE (TODAY, MSK) ======
-    const now = new Date();
-    const mskNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    mskNow.setHours(0, 0, 0, 0);
+    const event = req.body;
+    console.log("📩 YOOKASSA:", JSON.stringify(event, null, 2));
 
-    const startOfDay = new Date(
-      mskNow.getTime() - 3 * 60 * 60 * 1000
-    ).toISOString();
-
-    // ====== DATA ======
-    const { data: ordersRaw } = await supabase
-      .from("orders")
-      .select("id, tg_id, status, amount, created_at")
-      .order("created_at", { ascending: false });
-
-    const { data: codesRaw } = await supabase
-      .from("gifts")
-      .select("code, is_used, created_at")
-      .order("created_at", { ascending: false });
-
-    const { data: analyticsRaw } = await supabase
-      .from("analytics")
-      .select("tg_id, source, created_at");
-
-    const orders = ordersRaw || [];
-    const codes = codesRaw || [];
-    const analytics = analyticsRaw || [];
-
-    // ====== TODAY STATS ======
-    const todayOrders = orders.filter(
-      o => o.status === "paid" && o.created_at >= startOfDay
-    );
-
-    const totalSales = todayOrders.length;
-    const totalSum = todayOrders.reduce(
-      (sum, o) => sum + Number(o.amount || 0),
-      0
-    );
-
-    const usedCodes = codes.filter(
-      c => c.is_used && c.created_at >= startOfDay
-    );
-
-    const burnedCodes = codes.filter(
-      c => !c.is_used && c.created_at < startOfDay
-    );
-
-    const traffic = {
-      reels: 0,
-      tiktok: 0,
-      shorts: 0,
-      other: 0,
-    };
-
-    analytics
-      .filter(a => a.created_at >= startOfDay)
-      .forEach(a => {
-        if (a.source === "reels") traffic.reels++;
-        else if (a.source === "tiktok") traffic.tiktok++;
-        else if (a.source === "shorts") traffic.shorts++;
-        else traffic.other++;
-      });
-
-    // ====== HTML ======
-    res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Admin Panel</title>
-<style>
-body { font-family: Arial; padding: 20px; }
-table { border-collapse: collapse; margin-bottom: 20px; }
-td, th { border: 1px solid #ccc; padding: 6px 10px; }
-button { margin-right: 5px; }
-</style>
-</head>
-<body>
-
-<h1>🛠 Admin Panel</h1>
-
-<h2>📊 Статистика за сегодня (МСК)</h2>
-<ul>
-  <li>💰 Сумма продаж: <b>${totalSum} ₽</b></li>
-  <li>🧾 Оплачено заказов: <b>${totalSales}</b></li>
-  <li>🔑 Активировано кодов: <b>${usedCodes.length}</b></li>
-  <li>🔥 Сгорело кодов: <b>${burnedCodes.length}</b></li>
-</ul>
-
-<h3>📣 Источники трафика</h3>
-<ul>
-  <li>Reels: ${traffic.reels}</li>
-  <li>TikTok: ${traffic.tiktok}</li>
-  <li>Shorts: ${traffic.shorts}</li>
-  <li>Другое: ${traffic.other}</li>
-</ul>
-
-<h2>📦 Заказы</h2>
-<table>
-<tr><th>ID</th><th>TG</th><th>Status</th></tr>
-${orders.map(o => `
-<tr>
-  <td>${o.id}</td>
-  <td>${o.tg_id || "-"}</td>
-  <td>${o.status}</td>
-</tr>
-`).join("")}
-</table>
-
-<h2>🔑 Коды</h2>
-<button onclick="createCode()">➕ Создать код</button>
-
-<table>
-<tr><th>Код</th><th>Статус</th><th>Действия</th></tr>
-${codes.map(c => `
-<tr>
-  <td>${c.code}</td>
-  <td>${c.is_used ? "🔥 Использован" : "✅ Активен"}</td>
-  <td>
-    <button onclick="attachFile('${c.code}')">📎 Привязать файл</button>
-    <button onclick="resetCode('${c.code}')">🔄 Сброс</button>
-    <button onclick="deleteCode('${c.code}')">🗑 Удалить</button>
-  </td>
-</tr>
-`).join("")}
-</table>
-
-<script>
-const tgId = new URLSearchParams(window.location.search).get("tg_id");
-
-async function createCode() {
-  console.log("TG ID:", tgId);
-
-  const res = await fetch("/admin/create-code?tg_id=" + tgId, {
-    method: "POST"
-  });
-
-  const data = await res.json();
-  console.log("CREATE CODE RESPONSE:", data);
-
-  location.reload();
-}
-
-
-async function deleteCode(code) {
-  await fetch("/admin/delete-code?tg_id=" + tgId, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code })
-  });
-  location.reload();
-}
-
-async function resetCode(code) {
-  await fetch("/admin/reset-code?tg_id=" + tgId, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code })
-  });
-  location.reload();
-}
-</script>
-<script>
-  async function attachFile(code) {
-    const input = document.createElement("input");
-    input.type = "file";
-
-    input.onchange = async () => {
-      const file = input.files[0];
-      if (!file) return;
-
-      const form = new FormData();
-      form.append("file", file);
-      form.append("code", code);
-
-      const res = await fetch(
-        "/admin/attach-file?tg_id=" + tgId,
-        {
-          method: "POST",
-          body: form,
-        }
-      );
-
-      if (res.ok) {
-        alert("Файл привязан");
-        location.reload();
-      } else {
-        alert("Ошибка привязки файла");
-      }
-    };
-
-    input.click();
-  }
-</script>
-
-</body>
-</html>
-    `);
-  } catch (e) {
-    console.error("ADMIN ERROR:", e);
-    res.status(500).send("Admin error");
-  }
-});
-
-// ================== ADMIN ACTIONS ==================
-
-app.post("/admin/create-code", checkAdmin, async (req, res) => {
-  try {
-    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-    
-    const { error } = await supabase
-      .from("gifts")
-      .insert({
-        code,
-        is_used: false,
-        file_url: null
-      });
-
-    if (error) {
-      console.error("CREATE CODE ERROR:", error);
-      return res.status(500).json({ error: error.message });
+    if (event.event !== "payment.succeeded") {
+      return res.send("ok");
     }
 
-    console.log("CODE CREATED:", code);
-    res.json({ success: true, code });
+    const payment = event.object;
+    const orderId = payment.metadata.order_id;
+    const tgId = payment.metadata.tg_id;
+
+    // 🔐 создаём код
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    await supabase.from("gifts").insert({
+      code,
+      is_used: false,
+      file_url: null
+    });
+
+    await supabase
+      .from("orders")
+      .update({ status: "paid" })
+      .eq("id", orderId);
+
+    await tgSend(
+      tgId,
+      `✅ <b>Оплата прошла!</b>\n\nВаш код:\n<code>${code}</code>`
+    );
+
+    await tgSend(
+      ADMIN_TG_ID,
+      `💰 Новая оплата\nTG: ${tgId}\nКод: ${code}`
+    );
+
+    res.send("ok");
   } catch (e) {
-    console.error("CREATE CODE EXCEPTION:", e);
-    res.status(500).json({ error: "Create code failed" });
+    console.error("❌ YOOKASSA ERROR:", e);
+    res.send("ok");
   }
 });
-app.post("/admin/delete-code", checkAdmin, async (req, res) => {
-  const { code } = req.body;
-  await supabase.from("gifts").delete().eq("code", code);
-  res.json({ success: true });
+
+// ================== GET GIFT ==================
+app.get("/api/get-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+
+    const { data: gift } = await supabase
+      .from("gifts")
+      .select("*")
+      .eq("code", code)
+      .single();
+
+    if (!gift || gift.is_used || !gift.file_url) {
+      return res.status(404).json({ error: "Invalid or used" });
+    }
+
+    res.json({ gift_url: gift.file_url });
+  } catch (e) {
+    console.error("GET GIFT ERROR:", e);
+    res.status(404).json({ error: "Invalid" });
+  }
 });
 
-app.post("/admin/reset-code", checkAdmin, async (req, res) => {
-  const { code } = req.body;
-  await supabase.from("gifts").update({ is_used: false }).eq("code", code);
-  res.json({ success: true });
+// ================== USE GIFT ==================
+app.post("/api/use-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+
+    await supabase
+      .from("gifts")
+      .update({ is_used: true })
+      .eq("code", code);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("USE GIFT ERROR:", e);
+    res.status(500).json({ error: "fail" });
+  }
 });
+
+// ================== FILE UPLOAD ==================
+const upload = multer({ storage: multer.memoryStorage() });
+
 app.post(
   "/admin/attach-file",
   checkAdmin,
@@ -496,119 +141,84 @@ app.post(
   async (req, res) => {
     try {
       const { code } = req.body;
+      const file = req.file;
 
-      if (!req.file || !code) {
-        return res.status(400).json({ error: "Нет файла или кода" });
+      if (!file) {
+        return res.status(400).json({ error: "No file" });
       }
 
-      const ext = req.file.originalname.split(".").pop();
+      const ext = file.originalname.split(".").pop();
       const fileName = `gift_${code}_${Date.now()}.${ext}`;
 
-      // 1️⃣ грузим файл
       const { error: uploadError } = await supabase.storage
         .from("gifts")
-        .upload(fileName, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: true,
+        .upload(fileName, file.buffer, {
+          contentType: file.mimetype
         });
 
       if (uploadError) throw uploadError;
 
-      // 2️⃣ получаем публичную ссылку
       const { data } = supabase.storage
         .from("gifts")
         .getPublicUrl(fileName);
 
-      // 3️⃣ 🔥 ПРИВЯЗЫВАЕМ ФАЙЛ К КОДУ
-      const { error: updateError } = await supabase
+      await supabase
         .from("gifts")
         .update({ file_url: data.publicUrl })
         .eq("code", code);
 
-      if (updateError) throw updateError;
-
       res.json({ success: true });
     } catch (e) {
       console.error("ATTACH FILE ERROR:", e);
-      res.status(500).json({ error: "Ошибка привязки файла" });
+      res.status(500).json({ error: "attach fail" });
     }
   }
 );
-// ================== CHECK GIFT CODE ==================
-const apiRouter = express.Router();
 
-apiRouter.get("/get-gift/:code", async (req, res) => {
+// ================== ADMIN PANEL ==================
+app.get("/admin", checkAdmin, async (req, res) => {
   try {
-    const code = req.params.code.toUpperCase();
+    const { data: orders = [] } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    const { data } = await supabase
+    const { data: gifts = [] } = await supabase
       .from("gifts")
       .select("*")
-      .eq("code", code)
-      .single();
+      .order("created_at", { ascending: false });
 
-    if (!data || data.is_used) {
-      return res.status(400).json({ error: "Invalid code" });
-    }
+    res.send(`
+      <h1>🛠 Admin</h1>
 
-    if (!data.file_path) {
-      return res.status(400).json({ error: "File not attached" });
-    }
+      <h2>📦 Orders</h2>
+      ${orders.map(o => `<div>${o.id} — ${o.status}</div>`).join("")}
 
-    const { data: signed } = await supabase.storage
-      .from("gift-files")
-      .createSignedUrl(data.file_path, 3600);
-
-    res.json({ gift_url: signed.signedUrl });
+      <h2>🔑 Gifts</h2>
+      ${gifts.map(g => `
+        <div>
+          ${g.code} | ${g.is_used ? "USED" : "ACTIVE"}
+          <form method="post" action="/admin/attach-file?tg_id=${req.query.tg_id}" enctype="multipart/form-data">
+            <input type="hidden" name="code" value="${g.code}" />
+            <input type="file" name="file" />
+            <button>Attach</button>
+          </form>
+        </div>
+      `).join("")}
+    `);
   } catch (e) {
-    res.status(500).json({ error: "Server error" });
+    console.error("ADMIN ERROR:", e);
+    res.status(500).send("Admin error");
   }
 });
 
-app.use("/api", apiRouter);
-//===================USE======================
-app.post("/api/use-gift/:code", async (req, res) => {
-  try {
-    const code = req.params.code.toUpperCase();
-
-    const { data: gift, error } = await supabase
-      .from("gifts")
-      .select("id, is_used")
-      .eq("code", code)
-      .single();
-
-    if (error || !gift) {
-      return res.status(404).json({ error: "Invalid code" });
-    }
-
-    if (gift.is_used) {
-      return res.status(400).json({ error: "Already used" });
-    }
-
-    await supabase
-      .from("gifts")
-      .update({
-        is_used: true,
-        used_at: new Date().toISOString()
-      })
-      .eq("id", gift.id);
-
-    res.json({ success: true });
-  } catch (e) {
-    console.error("USE GIFT ERROR:", e);
-    res.status(500).json({ error: "Server error" });
-  }
+// ================== HEALTH ==================
+app.get("/", (req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString() });
 });
 
 // ================== START ==================
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    time: new Date().toISOString()
-  });
-});
-const PORT = process.env.PORT || 10000;
-
-app.listen(PORT, () => {
-  console.log("🚀 Server running on", PORT);
+const port = PORT || 10000;
+app.listen(port, () => {
+  console.log("🚀 Server running on", port);
 });
