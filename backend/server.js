@@ -39,19 +39,35 @@ const bot = new TelegramBot(TG_TOKEN, { polling: true });
 bot.on("polling_error", e => console.error("TG ERROR:", e));
 
 // ================== TG HELPERS ==================
-async function tgSend(chatId, text, markup = null) {
-  const body = {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML"
-  };
-  if (markup) body.reply_markup = markup;
+async function tgSend(chatId, text) {
+  if (!process.env.TG_TOKEN) {
+    console.warn("⚠️ TG_TOKEN not set");
+    return;
+  }
 
-  await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  try {
+    const res = await fetch(
+      https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML"
+        }),
+        timeout: 8000 // 🔥 обязательно
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("❌ TG API ERROR:", errText);
+    }
+  } catch (err) {
+    // 🔥 ВАЖНО: НЕ THROW
+    console.error("❌ TG SEND FAILED (IGNORED):", err.message);
+  }
 }
 
 // ================== TG BOT ==================
