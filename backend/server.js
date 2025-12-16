@@ -174,34 +174,32 @@ app.get("/health", (req, res) => {
 
 //===========GET===================
 app.get("/api/get-gift/:code", async (req, res) => {
+// ================== GET GIFT ==================
+app.get("/api/get-gift/:code", async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
 
-    const { data: gift, error } = await supabase
+    console.log("🎁 CHECK CODE:", code);
+
+    const { data, error } = await supabase
       .from("gifts")
-      .select("code, file_url, is_used")
+      .select("id, code, file_url, is_used")
       .eq("code", code)
+      .eq("is_used", false)
       .single();
 
-    if (error || !gift) {
-      return res.status(404).json({ error: "CODE_NOT_FOUND" });
+    console.log("📦 DATA:", data);
+
+    if (error || !data) {
+      return res.status(404).json({ error: "INVALID_CODE" });
     }
 
-    if (gift.is_used) {
-      return res.status(410).json({ error: "CODE_USED" });
-    }
-
-    if (!gift.file_url) {
-      return res.status(409).json({ error: "FILE_NOT_ATTACHED" });
-    }
-
-    res.json({
-      gift_url: gift.file_url
+    return res.json({
+      gift_url: data.file_url,
     });
-
   } catch (e) {
-    console.error("GET GIFT ERROR:", e);
-    res.status(500).json({ error: "SERVER_ERROR" });
+    console.error("🔥 GET GIFT ERROR:", e);
+    return res.status(500).json({ error: "SERVER_ERROR" });
   }
 });
 // ================== USE GIFT ==================
@@ -310,7 +308,7 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
 
   return await response.json();
 }
-//=========confirm============
+
 // ================== CONFIRM RESERVATION ==================
 async function confirmReservation(reservation_id, tg_user_id) {
   console.log("✅ CONFIRM RESERVATION:", reservation_id, tg_user_id);
@@ -333,7 +331,6 @@ async function confirmReservation(reservation_id, tg_user_id) {
     .from("gifts")
     .update({
       reserved: false,
-      is_used: false,
       tg_user_id: tg_user_id,
       used_at: null,
     })
