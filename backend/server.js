@@ -75,9 +75,8 @@ app.post("/telegram-webhook", async (req, res) => {
         });
 
         return res.sendStatus(200);
-      }
-} catch (e) {
-  console.error("❌ SUPABASE INIT ERROR:", e);
+      } catch (e) {
+        console.error("❌ telega xynia:", e);
 }
 // ===== CALLBACK =====
 app.post("/telegram", async (req, res) => {
