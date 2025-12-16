@@ -163,7 +163,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
       })
       .eq("code", code)
       .eq("is_used", false)
-      .select();
+      .select("*");
 
     console.log("📦 DATA:", data);
     console.log("⚠️ ERROR:", error);
