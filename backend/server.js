@@ -27,6 +27,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ================== TELEGRAM WEBHOOK ==================
+app.post("/telegram", async (req, res) => {
+  try {
+    console.log("📩 TG UPDATE:", JSON.stringify(req.body, null, 2));
+    res.send("ok");
+  } catch (e) {
+    console.error("❌ TG ERROR:", e);
+    res.send("ok");
+  }
+});
+
 // ================== TELEGRAM SAFE SEND ==================
 async function tgSend(chatId, text) {
   if (!TG_TOKEN) {
@@ -73,16 +84,7 @@ const supabase = createClient(
 app.get("/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
-// ================== TELEGRAM WEBHOOK ==================
-app.post("/telegram", async (req, res) => {
-  try {
-    console.log("📩 TG UPDATE:", JSON.stringify(req.body, null, 2));
-    res.send("ok");
-  } catch (e) {
-    console.error("❌ TG ERROR:", e);
-    res.send("ok");
-  }
-});
+
 // ================== START ==================
 const LISTEN_PORT = PORT || 10000;
 
