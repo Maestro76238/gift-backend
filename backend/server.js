@@ -159,30 +159,7 @@ app.post("/telegram-webhook", async (req, res) => {
 });
 
 // ================== TELEGRAM SAFE SEND ==================
-async function sendTG(chatId, text, extra = {}) {
-  const payload = {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-  };
 
-  if (extra.reply_markup) {
-    payload.reply_markup = extra.reply_markup;
-  }
-
-  const res = await fetch(
-    `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }
-  );
-
-  const data = await res.json();
-  console.log("TG SEND RESULT:", data);
-  return data;
-}
 // ================== TG TEST ==================
 app.get("/tg-test", async (req, res) => {
   await tgSend(ADMIN_TG_ID, "✅ Telegram test OK");
@@ -441,20 +418,29 @@ app.post("/yookassa-webhook", async (req, res) => {
 });
 
 //======send messege====
-async function sendTG(chatId, text, reply_markup = null) {
-  await fetch(
+async function sendTG(chatId, text, extra = {}) {
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+  };
+
+  if (extra.reply_markup) {
+    payload.reply_markup = extra.reply_markup;
+  }
+
+  const res = await fetch(
     `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        reply_markup,
-      }),
+      body: JSON.stringify(payload),
     }
   );
+
+  const data = await res.json();
+  console.log("TG SEND RESULT:", data);
+  return data;
 }
 // ================== START ==================
 const LISTEN_PORT = process.env.PORT || 10000;
