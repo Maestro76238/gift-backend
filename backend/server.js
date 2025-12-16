@@ -159,7 +159,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
     const { data, error } = await supabase
       .from("gifts")
       .update({ is_used: true,
-                used_at: new Data().toISOString(),
+                used_at: new Date().toISOString(),
       })
       .eq("code", code)
       .eq("is_used", false)
