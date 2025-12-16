@@ -103,8 +103,8 @@ app.get("/health", (req, res) => {
 });
 
 // ================== START ==================
-const LISTEN_PORT = PORT || 10000;
+const LISTEN_PORT = process.env.PORT || 10000;
 
 app.listen(LISTEN_PORT, () => {
-  console.log(`🚀 Server started on port ${LISTEN_PORT}`);
+  console.log(`🚀 Server running on port ${LISTEN_PORT}`);
 });
