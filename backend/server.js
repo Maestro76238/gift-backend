@@ -30,11 +30,32 @@ app.use(express.json());
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/telegram", async (req, res) => {
   try {
-    console.log("📩 TG UPDATE:", JSON.stringify(req.body, null, 2));
-    res.send("ok");
+    const update = req.body;
+    console.log("📩 TG UPDATE:", JSON.stringify(update, null, 2));
+
+    const message = update.message;
+    if (!message || !message.text) {
+      return res.sendStatus(200);
+    }
+
+    const chatId = message.chat.id;
+    const text = message.text.trim();
+
+    if (text === "/start") {
+      await fetch(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "🎁 Добро пожаловать!\n\nВведите код на сайте или получите подарок 🎉",
+        }),
+      });
+    }
+
+    res.sendStatus(200);
   } catch (e) {
-    console.error("❌ TG ERROR:", e);
-    res.send("ok");
+    console.error("❌ TG HANDLER ERROR:", e);
+    res.sendStatus(200);
   }
 });
 
