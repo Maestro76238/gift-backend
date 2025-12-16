@@ -172,8 +172,6 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-//===========GET===================
-app.get("/api/get-gift/:code", async (req, res) => {
 // ================== GET GIFT ==================
 app.get("/api/get-gift/:code", async (req, res) => {
   try {
