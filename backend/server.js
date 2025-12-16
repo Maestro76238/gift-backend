@@ -137,38 +137,21 @@ app.get("/api/get-gift/:code", async (req, res) => {
     res.status(500).json({ error: "SERVER_ERROR" });
   }
 });
-
-//===============USE===========
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
-  cononsole.log("USE GIFT HIT:", req.params.code);
-  try {
-    const code = req.params.code.toUpperCase();
+  const { code } = req.params;
 
-    const { data: gift, error } = await supabase
-      .from("gifts")
-      .select("id, is_used")
-      .eq("code", code)
-      .single();
+  const { error } = await supabase
+    .from("gifts")
+    .update({ used: true })
+    .eq("code", code)
+    .eq("used", false);
 
-    if (error || !gift) {
-      return res.status(404).json({ error: "Invalid code" });
-    }
-
-    if (gift.is_used) {
-      return res.status(400).json({ error: "Code already used" });
-    }
-
-    await supabase
-      .from("gifts")
-      .update({ is_used: true })
-      .eq("id", gift.id);
-
-    res.json({ success: true });
-  } catch (e) {
-    console.error("USE GIFT ERROR:", e);
-    res.status(500).json({ error: "Server error" });
+  if (error) {
+    return res.status(500).json({ error: error.message });
   }
+
+  res.json({ success: true });
 });
 
 // ================== START ==================
