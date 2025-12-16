@@ -102,6 +102,70 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
+//===========GET===================
+app.get("/api/get-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+
+    const { data: gift, error } = await supabase
+      .from("gifts")
+      .select("code, file_url, is_used")
+      .eq("code", code)
+      .single();
+
+    if (error || !gift) {
+      return res.status(404).json({ error: "CODE_NOT_FOUND" });
+    }
+
+    if (gift.is_used) {
+      return res.status(410).json({ error: "CODE_USED" });
+    }
+
+    if (!gift.file_url) {
+      return res.status(409).json({ error: "FILE_NOT_ATTACHED" });
+    }
+
+    res.json({
+      gift_url: gift.file_url
+    });
+
+  } catch (e) {
+    console.error("GET GIFT ERROR:", e);
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+//===============USE===========
+app.post("/api/use-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+
+    const { data: gift } = await supabase
+      .from("gifts")
+      .select("is_used")
+      .eq("code", code)
+      .single();
+
+    if (!gift || gift.is_used) {
+      return res.status(400).json({ error: "INVALID_CODE" });
+    }
+
+    await supabase
+      .from("gifts")
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString()
+      })
+      .eq("code", code);
+
+    res.json({ success: true });
+
+  } catch (e) {
+    console.error("USE GIFT ERROR:", e);
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
 // ================== START ==================
 const LISTEN_PORT = process.env.PORT || 10000;
 
