@@ -141,6 +141,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
 //===============USE===========
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
+  cononsole.log("USE GIFT HIT:", req.params.code);
   try {
     const code = req.params.code.toUpperCase();
 
