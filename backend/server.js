@@ -96,12 +96,6 @@ app.get("/tg-test", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ================== SUPABASE ==================
-const supabase = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_KEY
-);
-
 
 // ================== HEALTH ==================
 app.get("/health", (req, res) => {
