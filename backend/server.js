@@ -248,12 +248,11 @@ app.post("/api/use-gift/:code", async (req, res) => {
 async function reserveCode(tgUserId) {
   console.log("🔒 reserveCode for:", tgUserId);
 
-  // ищем свободный код
   const { data, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("is_used", false)
-    .is("reserved_by", null)
+    .eq("reserved", false)
     .limit(1)
     .single();
 
@@ -262,26 +261,21 @@ async function reserveCode(tgUserId) {
     return null;
   }
 
-  // резервируем
-  const { error: reserveError } = await supabase
+  const { error: updateError } = await supabase
     .from("gifts")
     .update({
-      reserved_by: tgUserId,
+      reserved: true,
       reserved_at: new Date().toISOString(),
+      tg_user_id: tgUserId,
     })
     .eq("id", data.id);
 
-  if (reserveError) {
-    console.error("❌ Reserve failed:", reserveError);
+  if (updateError) {
+    console.error("❌ Reserve update error:", updateError);
     return null;
   }
 
-  console.log("✅ Code reserved:", data.code);
-
-  return {
-    id: data.id,
-    code: data.code,
-  };
+  return data;
 }
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
@@ -317,99 +311,81 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
   return await response.json();
 }
 //=========confirm============
+async function confirmPayment(giftId, tgUserId) {
+  console.log("✅ confirmPayment:", giftId, tgUserId);
 
-app.post("/api/confirm-payment", async (req, res) => {
-  const { reservation_id, code } = req.body;
+  // 1. Получаем код
+  const { data: gift, error: fetchError } = await supabase
+    .from("gifts")
+    .select("*")
+    .eq("id", giftId)
+    .single();
 
-  const { data, error } = await supabase
+  if (fetchError || !gift) {
+    console.error("❌ Gift not found:", fetchError);
+    return;
+  }
+
+  // 2. Помечаем как использованный
+  const { error: updateError } = await supabase
     .from("gifts")
     .update({
       is_used: true,
       used_at: new Date().toISOString(),
       reserved: false,
-      reserved_by: null,
-      reserved_at: null,
     })
-    .eq("code", code)
-    .eq("reserved_by", reservation_id)
-    .eq("is_used", false)
-    .select();
+    .eq("id", giftId);
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+  if (updateError) {
+    console.error("❌ Update gift error:", updateError);
+    return;
   }
 
-  if (!data || data.length === 0) {
-    return res.status(400).json({ error: "INVALID_RESERVATION" });
-  }
+  // 3. Отдаём код пользователю
+  await sendTG(
+    tgUserId,
+    🎉 *Оплата успешна!*\n\n🔑 Ваш код:\n\`${gift.code}\`\n\n📦 Подарок готов ❤️,
+    { parse_mode: "Markdown" }
+  );
 
-  res.json({ success: true });
-});
-
+  console.log("🎁 Code delivered:", gift.code);
+}
 //===========canel==========
-
-async function cancelReservation(reservationId) {
-  console.log("↩️ Cancel reservation:", reservationId);
-
+async function cancelReservation(giftId) {
   await supabase
     .from("gifts")
     .update({
-      reserved_by: null,
+      reserved: false,
       reserved_at: null,
+      tg_user_id: null,
     })
-    .eq("id", reservationId);
+    .eq("id", giftId);
 }
 //==========yookassa======
 app.post("/yookassa-webhook", async (req, res) => {
   try {
     const event = req.body;
+
+    console.log("💳 YooKassa event:", event.event);
+
+    // ✅ ОБЯЗАТЕЛЬНО сразу отвечаем
+    res.sendStatus(200);
+
+    if (event.event !== "payment.succeeded") return;
+
     const payment = event.object;
 
-    const reservation_id = payment.metadata?.reservation_id;
-    const tg_user_id = payment.metadata?.tg_user_id;
+    const giftId = payment.metadata?.gift_id;
+    const tgUserId = payment.metadata?.tg_user_id;
 
-    if (!reservation_id) return res.sendStatus(200);
-
-    // ✅ УСПЕХ
-    if (event.event === "payment.succeeded") {
-      const { data: gift } = await supabase
-        .from("gifts")
-        .select("*")
-        .eq("reservation_id", reservation_id)
-        .single();
-
-      if (gift) {
-        await supabase
-          .from("gifts")
-          .update({
-            is_used: true,
-            used_at: new Date().toISOString(),
-          })
-          .eq("id", gift.id);
-
-        await sendTG(
-          tg_user_id,
-          `🎉 Оплата прошла!\n\nВаш секретный ключ:\n\n🔑 ${gift.code}`
-        );
-      }
+    if (!giftId || !tgUserId) {
+      console.error("❌ Missing metadata");
+      return;
     }
 
-    // ❌ ОТМЕНА
-    if (event.event === "payment.canceled") {
-      await supabase
-        .from("gifts")
-        .update({
-          reserved_by: null,
-          reservation_id: null,
-          reserved_at: null,
-        })
-        .eq("reservation_id", reservation_id);
-    }
-
-    res.sendStatus(200);
+    await confirmPayment(giftId, tgUserId);
   } catch (e) {
-    console.error("YOOKASSA ERROR:", e);
-    res.sendStatus(200);
+    console.error("🔥 YooKassa webhook error:", e);
   }
 });
 
