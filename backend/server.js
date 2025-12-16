@@ -143,26 +143,37 @@ app.get("/api/get-gift/:code", async (req, res) => {
 });
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
-  const { code } = req.params;
+  try {
+    const { code } = req.params;
 
-  const { error } = await supabase
-    .from("gifts")
-    .update({ used: true })
-    .eq("code", code)
-    .eq("used", false)
-    .select();
+    if (!supabase) {
+      console.error("❌ SUPABASE NOT INITIALIZED");
+      return res.status(500).json({ error: "Supabase not initialized" });
+    }
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+    const { data, error } = await supabase
+      .from("gifts")
+      .update({ used: true })
+      .eq("code", code)
+      .eq("used", false)
+      .select(); // ← ОБЯЗАТЕЛЬНО
+
+    if (error) {
+      console.error("❌ SUPABASE ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(400).json({ error: "Code already used or not found" });
+    }
+
+    console.log("✅ CODE MARKED AS USED:", code);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("🔥 SERVER CRASH:", e);
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  if (!data || data.lenght === 0) {
-    return res.status(404).json ({ error: "Code not found or already used" });
-  }
-
-  res.json({ success: true });
 });
-
 // ================== START ==================
 const LISTEN_PORT = process.env.PORT || 10000;
 
