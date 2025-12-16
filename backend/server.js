@@ -245,40 +245,44 @@ app.post("/api/use-gift/:code", async (req, res) => {
 });
 
 //==========reserved==========
-app.post("/api/reserve-code", async (req, res) => {
-  const reservation_id = crypto.randomUUID();
-  const tg_user_id = req.body.tg_user_id;
+async function reserveCode(tgUserId) {
+  console.log("🔒 reserveCode for:", tgUserId);
 
-  const { data: gift, error } = await supabase
+  // ищем свободный код
+  const { data, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("is_used", false)
-    .eq("reserved", false)
-    .order("created_at", { ascending: true })
+    .is("reserved_by", null)
     .limit(1)
     .single();
 
-  if (!gift) {
-    return res.status(404).json({ error: "NO_AVAILABLE_CODES" });
+  if (error || !data) {
+    console.log("❌ No free codes");
+    return null;
   }
 
-  await supabase
+  // резервируем
+  const { error: reserveError } = await supabase
     .from("gifts")
     .update({
-      reserved: true,
-      reservation_id,
+      reserved_by: tgUserId,
       reserved_at: new Date().toISOString(),
-      tg_user_id,
     })
-    .eq("id", gift.id);
+    .eq("id", data.id);
 
-  console.log("🟡 RESERVED:", gift.code);
+  if (reserveError) {
+    console.error("❌ Reserve failed:", reserveError);
+    return null;
+  }
 
-  res.json({
-    reservation_id,
-    code: gift.code,
-  });
-});
+  console.log("✅ Code reserved:", data.code);
+
+  return {
+    id: data.id,
+    code: data.code,
+  };
+}
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
   const response = await fetch("https://api.yookassa.ru/v3/payments", {
@@ -344,25 +348,17 @@ app.post("/api/confirm-payment", async (req, res) => {
 
 //===========canel==========
 
-app.post("/api/cancel-reservation", async (req, res) => {
-  const { reservation_id } = req.body;
+async function cancelReservation(reservationId) {
+  console.log("↩️ Cancel reservation:", reservationId);
 
   await supabase
     .from("gifts")
     .update({
-      reserved: false,
-      reservation_id: null,
+      reserved_by: null,
       reserved_at: null,
-      tg_user_id: null,
     })
-    .eq("reservation_id", reservation_id)
-    .eq("is_used", false);
-
-  console.log("🔴 RESERVATION CANCELED:", reservation_id);
-
-  res.json({ success: true });
-});
-
+    .eq("id", reservationId);
+}
 //==========yookassa======
 app.post("/yookassa-webhook", async (req, res) => {
   try {
