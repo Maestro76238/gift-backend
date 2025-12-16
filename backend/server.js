@@ -159,33 +159,29 @@ app.post("/telegram-webhook", async (req, res) => {
 });
 
 // ================== TELEGRAM SAFE SEND ==================
-async function tgSend(chatId, text) {
-  if (!TG_TOKEN) {
-    console.warn("⚠️ TG_TOKEN not set");
-    return;
+async function sendTG(chatId, text, extra = {}) {
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+  };
+
+  if (extra.reply_markup) {
+    payload.reply_markup = extra.reply_markup;
   }
 
-  try {
-    const res = await fetch(
-      `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          parse_mode: "HTML",
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      const t = await res.text();
-      console.error("❌ TG API ERROR:", t);
+  const res = await fetch(
+    https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }
-  } catch (e) {
-    console.error("❌ TG SEND FAILED (IGNORED):", e.message);
-  }
+  );
+
+  const data = await res.json();
+  console.log("TG SEND RESULT:", data);
+  return data;
 }
 // ================== TG TEST ==================
 app.get("/tg-test", async (req, res) => {
