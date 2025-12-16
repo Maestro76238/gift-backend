@@ -158,9 +158,9 @@ app.post("/api/use-gift/:code", async (req, res) => {
 
     const { data, error } = await supabase
       .from("gifts")
-      .update({ used: true })
+      .update({ is_used: true })
       .eq("code", code)
-      .eq("used", false)
+      .eq("is_used", false)
       .select("*");
 
     console.log("📦 DATA:", data);
