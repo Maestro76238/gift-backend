@@ -1,9 +1,12 @@
 import express from "express";
-import cors from "cors";
 import fetch from "node-fetch";
+import crypto from "crypto";
+import cors from "cors";
+import bodyParser from "body-parser";
 import { createClient } from "@supabase/supabase-js";
-const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
 
+const TG_TOKEN = process.env.TG_TOKEN;
+const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
 
 
 
