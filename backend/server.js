@@ -22,6 +22,41 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ================== TELEGRAM SAFE SEND ==================
+async function tgSend(chatId, text) {
+  if (!TG_TOKEN) {
+    console.warn("⚠️ TG_TOKEN not set");
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      const t = await res.text();
+      console.error("❌ TG API ERROR:", t);
+    }
+  } catch (e) {
+    console.error("❌ TG SEND FAILED (IGNORED):", e.message);
+  }
+}
+// ================== TG TEST ==================
+app.get("/tg-test", async (req, res) => {
+  await tgSend(ADMIN_TG_ID, "✅ Telegram test OK");
+  res.json({ ok: true });
+});
+
 // ================== SUPABASE ==================
 const supabase = createClient(
   SUPABASE_URL,
