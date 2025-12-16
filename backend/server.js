@@ -77,7 +77,7 @@ app.post("/telegram-webhook", async (req, res) => {
         return res.sendStatus(200);
       }
     }
-
+});
 // ===== CALLBACK =====
 app.post("/telegram", async (req, res) => {
   try {
