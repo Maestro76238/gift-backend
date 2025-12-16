@@ -596,6 +596,12 @@ app.post("/api/use-gift/:code", async (req, res) => {
 });
 
 // ================== START ==================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    time: new Date().toISOString()
+  });
+});
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, () => {
