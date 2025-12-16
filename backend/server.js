@@ -136,34 +136,34 @@ app.get("/api/get-gift/:code", async (req, res) => {
 });
 
 //===============USE===========
+// ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
-  console.log("USE GIFT:", req.params.code);
   try {
     const code = req.params.code.toUpperCase();
 
-    const { data: gift } = await supabase
+    const { data: gift, error } = await supabase
       .from("gifts")
-      .select("is_used")
+      .select("id, is_used")
       .eq("code", code)
       .single();
 
-    if (!gift || gift.is_used) {
-      return res.status(400).json({ error: "INVALID_CODE" });
+    if (error || !gift) {
+      return res.status(404).json({ error: "Invalid code" });
+    }
+
+    if (gift.is_used) {
+      return res.status(400).json({ error: "Code already used" });
     }
 
     await supabase
       .from("gifts")
-      .update({
-        is_used: true,
-        used_at: new Date().toISOString()
-      })
-      .eq("code", code);
+      .update({ is_used: true })
+      .eq("id", gift.id);
 
     res.json({ success: true });
-
   } catch (e) {
     console.error("USE GIFT ERROR:", e);
-    res.status(500).json({ error: "SERVER_ERROR" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
