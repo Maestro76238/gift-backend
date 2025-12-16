@@ -6,6 +6,8 @@ import { createClient } from "@supabase/supabase-js";
 
 const TG_TOKEN = process.env.TG_TOKEN;
 const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
+console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
+console.log("SUPABASE_SERVICE_KEY =", process.env.SUPABASE_SERVICE_KEY ? "OK" : "MISSING");
 
 // ================== INIT APP ==================
 const app = express();
