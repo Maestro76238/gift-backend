@@ -37,7 +37,7 @@ app.post("/telegram", async (req, res) => {
 
     const message = update.message;
     if (!message || !message.text) {
-      return res.sendStatus(200);
+      return res.send("OK");
     }
 
     const chatId = message.chat.id;
@@ -53,13 +53,12 @@ app.post("/telegram", async (req, res) => {
         }),
       });
     }
-
-    res.sendStatus(200);
+    res.send("OK");
   } catch (e) {
     console.error("❌ TG HANDLER ERROR:", e);
-    res.sendStatus(200);
-  }
     res.send("OK");
+  }
+    
 });
 
 // ================== TELEGRAM SAFE SEND ==================
