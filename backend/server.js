@@ -137,6 +137,7 @@ app.get("/api/get-gift/:code", async (req, res) => {
 
 //===============USE===========
 app.post("/api/use-gift/:code", async (req, res) => {
+  console.log("USE GIFT:", req.params.code);
   try {
     const code = req.params.code.toUpperCase();
 
