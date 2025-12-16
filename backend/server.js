@@ -27,6 +27,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ================= SUPABASE INIT =================
+let supabase = null;
+
+try {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    console.error("❌ SUPABASE ENV NOT SET");
+  } else {
+    supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    console.log("✅ SUPABASE CONNECTED");
+  }
+} catch (e) {
+  console.error("❌ SUPABASE INIT ERROR:", e);
+}
+
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/telegram", async (req, res) => {
   try {
