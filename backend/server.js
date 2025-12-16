@@ -361,31 +361,44 @@ async function cancelReservation(giftId) {
     })
     .eq("id", giftId);
 }
-//==========yookassa======
+// ================== YOOKASSA WEBHOOK ==================
 app.post("/yookassa-webhook", async (req, res) => {
   try {
     const event = req.body;
 
     console.log("💳 YooKassa event:", event.event);
 
-    // ✅ ОБЯЗАТЕЛЬНО сразу отвечаем
+    // ОБЯЗАТЕЛЬНО сразу отвечаем
     res.sendStatus(200);
 
-    if (event.event !== "payment.succeeded") return;
+    if (event.event === "payment.succeeded") {
+      const payment = event.object;
 
-    const payment = event.object;
+      const reservationId = payment.metadata?.reservation_id;
+      const tgUserId = payment.metadata?.tg_user_id;
 
-    const giftId = payment.metadata?.gift_id;
-    const tgUserId = payment.metadata?.tg_user_id;
+      console.log("✅ PAYMENT SUCCESS:", reservationId, tgUserId);
 
-    if (!giftId || !tgUserId) {
-      console.error("❌ Missing metadata");
-      return;
+      if (!reservationId || !tgUserId) {
+        console.error("❌ METADATA MISSING");
+        return;
+      }
+
+      await confirmReservation(reservationId, tgUserId);
     }
 
-    await confirmPayment(giftId, tgUserId);
+    if (event.event === "payment.canceled") {
+      const payment = event.object;
+      const reservationId = payment.metadata?.reservation_id;
+
+      console.log("❌ PAYMENT CANCELED:", reservationId);
+
+      if (reservationId) {
+        await cancelReservation(reservationId);
+      }
+    }
   } catch (e) {
-    console.error("🔥 YooKassa webhook error:", e);
+    console.error("🔥 YOOKASSA WEBHOOK ERROR:", e);
   }
 });
 
