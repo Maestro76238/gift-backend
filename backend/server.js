@@ -347,7 +347,7 @@ async function confirmReservation(reservation_id, tg_user_id) {
   // 3️⃣ отправляем код пользователю
   await sendTG(
     tg_user_id,
-    🎉 <b>Оплата прошла успешно!</b>\n\nВаш секретный код:\n<code>${gift.code}</code>
+    `🎉 <b>Оплата прошла успешно!</b>\n\nВаш секретный код:\n<code>${gift.code}</code>`
   );
 
   console.log("🎁 CODE SENT:", gift.code);
