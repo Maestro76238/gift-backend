@@ -45,6 +45,8 @@ app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
 
+    console.log("TG UPDATE:", update);
+
     // ===== MESSAGE =====
     if (update.message) {
       const chatId = update.message.chat.id;
@@ -52,32 +54,38 @@ app.post("/telegram-webhook", async (req, res) => {
 
       if (text === "/start") {
         await sendTG(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
-          inline_keyboard: [
-            [
-              {
-                text: "📖 FAQ",
-                url: "https://telegra.ph/FAQ-12-16-21",
-              },
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📖 FAQ",
+                  url: "https://telegra.ph/FAQ-12-16-21",
+                },
+              ],
+              [
+                {
+                  text: "📝 Инструкция",
+                  callback_data: "INSTRUCTION",
+                },
+              ],
+              [
+                {
+                  text: "🔑 Купить ключ",
+                  callback_data: "BUY_KEY",
+                },
+              ],
             ],
-            [
-              {
-                text: "📝 Инструкция",
-                callback_data: "INSTRUCTION",
-              },
-            ],
-            [
-              {
-                text: "🔑 Купить ключ",
-                callback_data: "BUY_KEY",
-              },
-            ],
-          ],
+          },
+        });
+      }
+    }
 
-
-        return res.sendStatus(200);
-} catch (e) {
-  console.error("❌ telega xynia:", e);
-}
+    return res.sendStatus(200);
+  } catch (e) {
+    console.error("❌ TG WEBHOOK ERROR:", e);
+    return res.sendStatus(200);
+  }
+});
 // ===== CALLBACK =====
 app.post("/telegram", async (req, res) => {
   try {
