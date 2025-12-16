@@ -146,22 +146,27 @@ app.get("/api/get-gift/:code", async (req, res) => {
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
   try {
+    console.log("➡️ use-gift called");
+
     if (!supabase) {
       console.error("❌ SUPABASE IS NULL");
       return res.status(500).json({ error: "Supabase not initialized" });
     }
 
     const { code } = req.params;
+    console.log("🔑 CODE:", code);
 
     const { data, error } = await supabase
       .from("gifts")
       .update({ used: true })
       .eq("code", code)
       .eq("used", false)
-      .select();
+      .select("*");
+
+    console.log("📦 DATA:", data);
+    console.log("⚠️ ERROR:", error);
 
     if (error) {
-      console.error("❌ SUPABASE ERROR:", error);
       return res.status(500).json({ error: error.message });
     }
 
@@ -169,10 +174,9 @@ app.post("/api/use-gift/:code", async (req, res) => {
       return res.status(400).json({ error: "Code not found or already used" });
     }
 
-    console.log("✅ CODE USED:", code);
     res.json({ success: true });
   } catch (e) {
-    console.error("🔥 SERVER CRASH:", e);
+    console.error("🔥 CATCH ERROR:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
