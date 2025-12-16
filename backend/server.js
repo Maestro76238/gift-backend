@@ -78,74 +78,95 @@ app.post("/telegram-webhook", async (req, res) => {
       }
     }
 
-    // ===== CALLBACK =====
-    if (update.callback_query) {
-      const chatId = update.callback_query.message.chat.id;
-      const data = update.callback_query.data;
+// ===== CALLBACK =====
+app.post("/telegram", async (req, res) => {
+  try {
+    const update = req.body;
 
-      // === INSTRUCTION ===
+    // ✅ ОБЯЗАТЕЛЬНО
+    res.send("ok");
+
+    // ================== CALLBACK ==================
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      const tgId = cb.from.id;
+      const data = cb.data;
+
+      console.log("➡️ CALLBACK:", data);
+
+      // ❗️ ОБЯЗАТЕЛЬНО отвечаем Telegram
+      await fetch(
+        https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callback_query_id: cb.id,
+          }),
+        }
+      );
+
+      // ===== ИНСТРУКЦИЯ =====
       if (data === "INSTRUCTION") {
         await sendTG(
-          chatId,
-          "📝 Инструкция:\n\n1️⃣ Нажмите «Купить ключ»\n2️⃣ Оплатите\n3️⃣ Получите код\n4️⃣ Проверьте код на сайте"
+          tgId,
+          "📖 Инструкция:\n\n1️⃣ Купите ключ\n2️⃣ Получите код\n3️⃣ Проверьте код на сайте"
         );
-        return res.sendStatus(200);
+        return;
       }
 
-      // === BUY KEY ===
+      // ===== ПОКУПКА =====
       if (data === "BUY_KEY") {
-        // 1. Берём свободный код
-        const { data: gift } = await supabase
-          .from("gifts")
-          .select("*")
-          .eq("is_used", false)
-          .is("reserved_by", null)
-          .limit(1)
-          .single();
+        console.log("🛒 BUY_KEY pressed by", tgId);
 
-        if (!gift) {
-          await sendTG(chatId, "❌ Коды закончились");
-          return res.sendStatus(200);
+        // 🔒 резерв кода
+        const reservation = await reserveCode(tgId);
+
+        if (!reservation) {
+          await sendTG(tgId, "❌ Коды временно закончились");
+          return;
         }
 
-        // 2. Резервируем
-        const reservation_id = crypto.randomUUID();
-
-        await supabase
-          .from("gifts")
-          .update({
-            reserved_by: chatId,
-            reservation_id,
-            reserved_at: new Date().toISOString(),
-          })
-          .eq("id", gift.id);
-
-        // 3. Создаём платёж
+        // 💳 платёж
         const payment = await createYooPayment({
-          reservation_id,
-          tg_user_id: chatId,
+          reservation_id: reservation.id,
+          tg_user_id: tgId,
         });
 
-        // 4. Кнопка оплаты
-        await sendTG(chatId, "💳 Оплатите подарок 👇", {
-          inline_keyboard: [
-            [
-              {
-                text: "Оплатить",
-                url: payment.confirmation.confirmation_url,
-              },
+        await sendTG(tgId, "💳 Оплатите подарок 👇", {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Оплатить",
+                  url: payment.confirmation.confirmation_url,
+                },
+              ],
+              [
+                {
+                  text: "❌ Отменить",
+                  callback_data: "CANCEL_PAYMENT:" + reservation.id,
+                },
+              ],
             ],
-          ],
+          },
         });
 
-        return res.sendStatus(200);
+        return;
+      }
+
+      // ===== ОТМЕНА =====
+      if (data.startsWith("CANCEL_PAYMENT:")) {
+        const reservationId = data.split(":")[1];
+
+        await cancelReservation(reservationId);
+
+        await sendTG(tgId, "❌ Платёж отменён. Код возвращён в систему.");
+        return;
       }
     }
-
-    res.sendStatus(200);
   } catch (e) {
-    console.error("TG WEBHOOK ERROR:", e);
-    res.sendStatus(200);
+    console.error("🔥 TG WEBHOOK ERROR:", e);
   }
 });
 
