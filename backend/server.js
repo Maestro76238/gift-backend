@@ -5,6 +5,11 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 import multer from "multer";
 import path from "path";
+import TelegramBot from "node-telegram-bot-api";
+
+const bot = new TelegramBot(process.env.BOT_TOKEN, {
+  polling: true,
+});
 const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
 const upload = multer({ storage: multer.memoryStorage() });
 
