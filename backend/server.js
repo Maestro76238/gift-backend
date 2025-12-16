@@ -2,25 +2,10 @@ import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
 import cors from "cors";
-import bodyParser from "body-parser";
 import { createClient } from "@supabase/supabase-js";
 
 const TG_TOKEN = process.env.TG_TOKEN;
 const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
-
-
-
-// ================== ENV ==================
-const {
-  PORT,
-  SUPABASE_URL,
-  SUPABASE_SERVICE_KEY,
-} = process.env;
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error("❌ SUPABASE ENV MISSING");
-  process.exit(1);
-}
 
 // ================== INIT APP ==================
 const app = express();
