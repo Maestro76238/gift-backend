@@ -186,14 +186,14 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .eq("is_used", false)
       .single();
 
-    console.log("📦 DATA:", data);
+    console.log("📦 DATA:", data, "ERROR:", error);
 
-    if (error || !data) {
+    if (!data) {
       return res.status(404).json({ error: "INVALID_CODE" });
     }
 
     return res.json({
-      gift_url: data.file_url,
+      gift_url: data.file_url || null,
     });
   } catch (e) {
     console.error("🔥 GET GIFT ERROR:", e);
