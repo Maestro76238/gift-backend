@@ -1,151 +1,108 @@
 import express from "express";
-import fetch from "node-fetch";
-import TelegramBot from "node-telegram-bot-api";
-import crypto from "crypto";
-import multer from "multer";
 import cors from "cors";
+import crypto from "crypto";
+import fetch from "node-fetch";
+import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 
-// ================== ENV CHECK ==================
+// ================= ENV =================
 const {
-  TG_TOKEN,
-  ADMIN_TG_ID,
   SUPABASE_URL,
   SUPABASE_SERVICE_KEY,
   YOOKASSA_SHOP_ID,
   YOOKASSA_SECRET_KEY,
+  TG_TOKEN,
+  ADMIN_TG_ID,
   PORT
 } = process.env;
 
-if (!TG_TOKEN) {
-  console.error("❌ TG_TOKEN missing");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error("❌ SUPABASE ENV missing");
   process.exit(1);
 }
 
-// ================== INIT ==================
+// ================= INIT =================
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-console.log("SUPABASE_URL:", !!process.env.SUPABASE_URL);
-console.log("SUPABASE_SERVICE_KEY:", !!process.env.SUPABASE_SERVICE_KEY);
 const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_SERVICE_KEY
 );
 
-const bot = new TelegramBot(TG_TOKEN, { polling: true });
+const upload = multer({ storage: multer.memoryStorage() });
 
-bot.on("polling_error", e => console.error("TG ERROR:", e));
-
-// ================== TG HELPERS ==================
+// ================= HELPERS =================
 async function tgSend(chatId, text) {
-  if (!process.env.TG_TOKEN) {
-    console.warn("⚠️ TG_TOKEN not set");
-    return;
-  }
+  if (!TG_TOKEN) return;
 
   try {
-    const res = await fetch(
-      `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
+    await fetch(
+      `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
           text,
-          parse_mode: "HTML"
+          parse_mode: "HTML",
         }),
-        timeout: 8000 // 🔥 обязательно
       }
     );
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("❌ TG API ERROR:", errText);
-    }
-  } catch (err) {
-    // 🔥 ВАЖНО: НЕ THROW
-    console.error("❌ TG SEND FAILED (IGNORED):", err.message);
+  } catch (e) {
+    console.error("TG SEND ERROR (ignored):", e.message);
   }
 }
 
-// ================== TG BOT ==================
-bot.onText(/\/start/, async msg => {
-  await tgSend(
-    msg.chat.id,
-    "🎄 <b>С наступающим Новым годом!</b>\n\nЗдесь вы можете купить секретный ключ 🔑",
-    {
-      inline_keyboard: [
-        [{ text: "ℹ️ Как это работает?", callback_data: "INFO" }],
-        [{ text: "🔑 Купить ключ", callback_data: "BUY" }]
-      ]
-    }
-  );
-});
+function generateCode() {
+  return crypto.randomBytes(4).toString("hex").toUpperCase();
+}
 
-bot.on("callback_query", async q => {
-  const chatId = q.message.chat.id;
-
-  if (q.data === "INFO") {
-    await tgSend(chatId, "Вы покупаете код, вводите его на сайте и получаете подарок 🎁");
-  }
-
-  if (q.data === "BUY") {
-    const { data: order } = await supabase
-      .from("orders")
-      .insert({ tg_id: chatId, status: "pending" })
-      .select()
-      .single();
-
-    const payUrl =
-      `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOKASSA_SHOP_ID}` +
-      `&label=${order.id}` +
-      `&sum=1` +
-      `&quickpay-form=shop` +
-      `&paymentType=AC`;
-
-    await tgSend(chatId, "💳 Оплатите по кнопке", {
-      inline_keyboard: [[{ text: "Оплатить", url: payUrl }]]
-    });
-  }
-});
-
-// ================== YOOKASSA WEBHOOK ==================
+// ================= YOOKASSA WEBHOOK =================
 app.post("/yookassa", async (req, res) => {
   try {
-    console.log("📩 YOOKASSA:", req.body);
+    const event = req.body;
 
-    if (req.body.event !== "payment.succeeded") {
+    console.log("💳 YOOKASSA:", JSON.stringify(event));
+
+    if (event.event !== "payment.succeeded") {
       return res.send("ok");
     }
 
-    const payment = req.body.object;
-    const orderId = payment.metadata?.order_id;
+    const payment = event.object;
     const tgId = payment.metadata?.tg_id;
 
-    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+    const code = generateCode();
 
     await supabase.from("gifts").insert({
       code,
-      is_used: false
+      is_used: false,
+      file_path: null,
     });
 
-    await supabase.from("orders")
-      .update({ status: "paid" })
-      .eq("id", orderId);
+    if (tgId) {
+      await tgSend(
+        tgId,
+        `✅ <b>Оплата прошла</b>\n\nВаш код:\n<code>${code}</code>`
+      );
+    }
 
-    await tgSend(tgId, `✅ <b>Оплата прошла!</b>\n\nВаш код:\n<code>${code}</code>`);
-    await tgSend(ADMIN_TG_ID, `💰 Покупка\nTG: ${tgId}\nКод: ${code}`);
+    if (ADMIN_TG_ID) {
+      await tgSend(
+        ADMIN_TG_ID,
+        `💰 Новая оплата\nКод: ${code}`
+      );
+    }
 
     res.send("ok");
   } catch (e) {
-    console.error("YOOKASSA ERROR:", e);
+    console.error("❌ YOOKASSA ERROR:", e);
     res.send("ok");
   }
 });
 
-// ================== GIFT CHECK ==================
+// ================= GIFT CHECK =================
 app.get("/api/get-gift/:code", async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
@@ -157,27 +114,35 @@ app.get("/api/get-gift/:code", async (req, res) => {
       .single();
 
     if (!data || data.is_used) {
-      return res.status(400).json({ error: "Invalid code" });
+      return res.status(400).json({ error: "Invalid or used code" });
     }
 
-    res.json({ gift_url: data.file_path || null });
+    res.json({ gift_url: data.file_path });
   } catch (e) {
     console.error("GET GIFT ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ================== USE GIFT ==================
+// ================= USE GIFT =================
 app.post("/api/use-gift/:code", async (req, res) => {
-  await supabase
-    .from("gifts")
-    .update({ is_used: true })
-    .eq("code", req.params.code.toUpperCase());
+  try {
+    await supabase
+      .from("gifts")
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString(),
+      })
+      .eq("code", req.params.code.toUpperCase());
 
-  res.json({ ok: true });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("USE GIFT ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
-// ================== ADMIN ==================
+// ================= ADMIN =================
 function checkAdmin(req, res, next) {
   if (String(req.query.tg_id) !== String(ADMIN_TG_ID)) {
     return res.status(403).send("Forbidden");
@@ -186,17 +151,80 @@ function checkAdmin(req, res, next) {
 }
 
 app.get("/admin", checkAdmin, async (req, res) => {
-  const { data: gifts = [] } = await supabase.from("gifts").select("*");
+  const { data: gifts = [] } = await supabase
+    .from("gifts")
+    .select("*")
+    .order("created_at", { ascending: false });
+
   res.send(`
     <h1>Admin</h1>
     <table border="1">
-      <tr><th>Code</th><th>Used</th></tr>
-      ${gifts.map(g => `<tr><td>${g.code}</td><td>${g.is_used}</td></tr>`).join("")}
+      <tr>
+        <th>Code</th>
+        <th>Used</th>
+        <th>File</th>
+      </tr>
+      ${gifts
+        .map(
+          g =>
+            `<tr>
+              <td>${g.code}</td>
+              <td>${g.is_used}</td>
+              <td>${g.file_path || "-"}</td>
+            </tr>`
+        )
+        .join("")}
     </table>
   `);
 });
 
-// ================== START ==================
-app.listen(PORT || 10000, () =>
-  console.log("🚀 Server started")
+// ================= ATTACH FILE =================
+app.post(
+  "/admin/attach-file",
+  checkAdmin,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { code } = req.body;
+      const file = req.file;
+
+      if (!file || !code) {
+        return res.status(400).json({ error: "Missing file or code" });
+      }
+
+      const ext = file.originalname.split(".").pop();
+      const fileName = `gift_${code}_${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("gifts")
+        .upload(fileName, file.buffer);
+
+      if (error) throw error;
+
+      const { data } = supabase.storage
+        .from("gifts")
+        .getPublicUrl(fileName);
+
+      await supabase
+        .from("gifts")
+        .update({ file_path: data.publicUrl })
+        .eq("code", code.toUpperCase());
+
+      res.json({ ok: true });
+    } catch (e) {
+      console.error("ATTACH FILE ERROR:", e);
+      res.status(500).json({ error: "Attach failed" });
+    }
+  }
 );
+
+// ================= HEALTH =================
+app.get("/", (req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+// ================= START =================
+const RUN_PORT = PORT || 10000;
+app.listen(RUN_PORT, () => {
+  console.log(`🚀 Server started on ${RUN_PORT}`);
+});
