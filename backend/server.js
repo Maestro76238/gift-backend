@@ -344,8 +344,8 @@ async function confirmPayment(giftId, tgUserId) {
   // 3. Отдаём код пользователю
   await sendTG(
     tgUserId,
-    🎉 *Оплата успешна!*\n\n🔑 Ваш код:\n\`${gift.code}\`\n\n📦 Подарок готов ❤️,
-    { parse_mode: "Markdown" }
+    `🎉 *Оплата успешна!*\n\n🔑 Ваш код:\n\`${gift.code}\`\n\n📦 Подарок готов ❤️,
+    { parse_mode: "Markdown" }`
   );
 
   console.log("🎁 Code delivered:", gift.code);
