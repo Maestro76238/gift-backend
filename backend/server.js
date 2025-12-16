@@ -146,19 +146,19 @@ app.get("/api/get-gift/:code", async (req, res) => {
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
   try {
-    const { code } = req.params;
-
     if (!supabase) {
-      console.error("❌ SUPABASE NOT INITIALIZED");
+      console.error("❌ SUPABASE IS NULL");
       return res.status(500).json({ error: "Supabase not initialized" });
     }
+
+    const { code } = req.params;
 
     const { data, error } = await supabase
       .from("gifts")
       .update({ used: true })
       .eq("code", code)
       .eq("used", false)
-      .select(); // ← ОБЯЗАТЕЛЬНО
+      .select();
 
     if (error) {
       console.error("❌ SUPABASE ERROR:", error);
@@ -166,10 +166,10 @@ app.post("/api/use-gift/:code", async (req, res) => {
     }
 
     if (!data || data.length === 0) {
-      return res.status(400).json({ error: "Code already used or not found" });
+      return res.status(400).json({ error: "Code not found or already used" });
     }
 
-    console.log("✅ CODE MARKED AS USED:", code);
+    console.log("✅ CODE USED:", code);
     res.json({ success: true });
   } catch (e) {
     console.error("🔥 SERVER CRASH:", e);
