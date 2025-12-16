@@ -8,6 +8,14 @@ import path from "path";
 const ADMIN_TG_ID = Number(process.env.ADMIN_TG_ID);
 const upload = multer({ storage: multer.memoryStorage() });
 
+process.on("unhandledRejection", err => {
+  console.error("🔥 UNHANDLED REJECTION:", err);
+});
+
+process.on("uncaughtException", err => {
+  console.error("💥 UNCAUGHT EXCEPTION:", err);
+});
+
 // ================== APP ==================
 const app = express();
 app.use(cors());
@@ -30,28 +38,32 @@ const supabase = createClient(
 );
 
 // ================== TELEGRAM ==================
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
+const tgRouter = express.Router();
 
-async function tgSend(chatId, text, replyMarkup = null) {
-  const body = {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-  };
-  if (replyMarkup) body.reply_markup = replyMarkup;
+tgRouter.post("/", async (req, res) => {
+  try {
+    const update = req.body;
+    console.log("📩 TG UPDATE:", JSON.stringify(update));
 
-  await fetch(`${TG_API}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
+    // 👇 твоя логика бота (callback, start, кнопки)
+  } catch (e) {
+    console.error("❌ TG ERROR:", e);
+  }
 
-// ================== HEALTH ==================
-app.get("/", (req, res) => {
-  res.send("OK");
+  // 🔥 ВСЕГДА отвечаем
+  res.send("ok");
 });
 
+// ❗ TG получает ТОЛЬКО JSON
+app.use("/tg", express.json(), tgRouter);
+
+//======heal==============
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    time: new Date().toISOString()
+  });
+});
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/tg", async (req, res) => {
   try {
@@ -156,51 +168,62 @@ app.post("/tg", async (req, res) => {
 });
 
 // ================== YOOKASSA WEBHOOK ==================
-app.post("/yookassa", async (req, res) => {
-  try {
-    const event = req.body;
+const ykRouter = express.Router();
 
-    console.log("📩 YOOKASSA WEBHOOK:", JSON.stringify(event, null, 2));
+ykRouter.post(
+  "/",
+  express.json(), // ❗ ТОЛЬКО JSON
+  async (req, res) => {
+    try {
+      const event = req.body;
+      console.log("📩 YOOKASSA WEBHOOK:", JSON.stringify(event, null, 2));
 
-    if (event.event !== "payment.succeeded") {
-      return res.send("ok");
+      if (event.event !== "payment.succeeded") {
+        return res.send("ok");
+      }
+
+      const payment = event.object;
+      const orderId = payment?.metadata?.order_id;
+      const tgId = payment?.metadata?.tg_id;
+
+      if (!orderId || !tgId) {
+        console.warn("⚠️ Нет metadata");
+        return res.send("ok");
+      }
+
+      // 🔑 генерация кода
+      const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+      await supabase.from("gifts").insert({
+        code,
+        is_used: false,
+        file_path: null
+      });
+
+      await supabase
+        .from("orders")
+        .update({ status: "paid" })
+        .eq("id", orderId);
+
+      await tgSend(
+        tgId,
+        "✅ <b>Оплата прошла!</b>\n\nВаш код:\n<code>" + code + "</code>"
+      );
+
+      await tgSend(
+        ADMIN_TG_ID,
+        "💰 Оплата\nTG: " + tgId + "\nКод: " + code
+      );
+    } catch (e) {
+      console.error("❌ YOOKASSA ERROR:", e);
     }
 
-    // 🔥 ВАЖНО: объявляем ЗДЕСЬ
-    const payment = event.object;
-
-    const orderId = payment.metadata.order_id;
-    const tgId = payment.metadata.tg_id;
-
-    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
-
-    await supabase.from("gifts").insert({
-      code,
-      is_used: false,
-      file_url: null
-    });
-
-    await supabase
-      .from("orders")
-      .update({ status: "paid" })
-      .eq("id", orderId);
-
-    await tgSend(
-      tgId,
-      "✅ <b>Оплата прошла!</b>\n\nВаш секретный ключ:\n<code>" + code + "</code>"
-    );
-
-    await tgSend(
-      ADMIN_TG_ID,
-      "💰 Новая покупка\nTG ID: " + tgId + "\nКод: " + code
-    );
-
-    res.send("ok");
-  } catch (e) {
-    console.error("❌ YOOKASSA ERROR:", e);
+    // 🔥 ВСЕГДА отвечаем
     res.send("ok");
   }
-});
+);
+
+app.use("/yookassa", ykRouter);
 // ================== ADMIN PANEL (FULL) ==================
 
 // 🔐 ADMIN MIDDLEWARE
@@ -507,36 +530,37 @@ app.post(
   }
 );
 // ================== CHECK GIFT CODE ==================
-app.get("/api/get-gift/:code", async (req, res) => {
+const apiRouter = express.Router();
+
+apiRouter.get("/get-gift/:code", async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
 
-    const { data: gift, error } = await supabase
+    const { data } = await supabase
       .from("gifts")
       .select("*")
       .eq("code", code)
       .single();
 
-    if (error || !gift) {
-      return res.status(404).json({ error: "Code not found" });
+    if (!data || data.is_used) {
+      return res.status(400).json({ error: "Invalid code" });
     }
 
-    if (gift.is_used) {
-      return res.status(400).json({ error: "Code already used" });
+    if (!data.file_path) {
+      return res.status(400).json({ error: "File not attached" });
     }
 
-    if (!gift.file_url) {
-      return res.status(400).json({ error: "Gift file not attached" });
-    }
+    const { data: signed } = await supabase.storage
+      .from("gift-files")
+      .createSignedUrl(data.file_path, 3600);
 
-    res.json({
-      gift_url: gift.file_url,
-    });
+    res.json({ gift_url: signed.signedUrl });
   } catch (e) {
-    console.error("GET GIFT ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
+
+app.use("/api", apiRouter);
 //===================USE======================
 app.post("/api/use-gift/:code", async (req, res) => {
   try {
