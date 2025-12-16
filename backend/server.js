@@ -44,10 +44,9 @@ try {
 app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
+    console.log("TG UPDATE:", JSON.stringify(update, null, 2));
 
-    console.log("TG UPDATE:", update);
-
-    // ===== MESSAGE =====
+    // ================== MESSAGE ==================
     if (update.message) {
       const chatId = update.message.chat.id;
       const text = update.message.text;
@@ -80,20 +79,6 @@ app.post("/telegram-webhook", async (req, res) => {
       }
     }
 
-    return res.sendStatus(200);
-  } catch (e) {
-    console.error("❌ TG WEBHOOK ERROR:", e);
-    return res.sendStatus(200);
-  }
-});
-// ===== CALLBACK =====
-app.post("/telegram", async (req, res) => {
-  try {
-    const update = req.body;
-
-    // ✅ ОБЯЗАТЕЛЬНО
-    res.send("ok");
-
     // ================== CALLBACK ==================
     if (update.callback_query) {
       const cb = update.callback_query;
@@ -104,7 +89,7 @@ app.post("/telegram", async (req, res) => {
 
       // ❗️ ОБЯЗАТЕЛЬНО отвечаем Telegram
       await fetch(
-        `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
+        https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -118,49 +103,43 @@ app.post("/telegram", async (req, res) => {
       if (data === "INSTRUCTION") {
         await sendTG(
           tgId,
-          "📖 Инструкция:\n\n1️⃣ Купите ключ\n2️⃣ Получите код\n3️⃣ Проверьте код на сайте"
+          "📖 Инструкция:\n\n1️⃣ Нажмите «Купить ключ»\n2️⃣ Оплатите\n3️⃣ Получите код\n4️⃣ Проверьте его на сайте"
         );
-        return;
       }
 
       // ===== ПОКУПКА =====
       if (data === "BUY_KEY") {
         console.log("🛒 BUY_KEY pressed by", tgId);
 
-        // 🔒 резерв кода
         const reservation = await reserveCode(tgId);
 
         if (!reservation) {
           await sendTG(tgId, "❌ Коды временно закончились");
-          return;
+        } else {
+          const payment = await createYooPayment({
+            reservation_id: reservation.id,
+            tg_user_id: tgId,
+          });
+
+          await sendTG(tgId, "💳 Оплатите подарок 👇", {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "Оплатить",
+                    url: payment.confirmation.confirmation_url,
+                  },
+                ],
+                [
+                  {
+                    text: "❌ Отменить",
+                    callback_data: CANCEL_PAYMENT:${reservation.id},
+                  },
+                ],
+              ],
+            },
+          });
         }
-
-        // 💳 платёж
-        const payment = await createYooPayment({
-          reservation_id: reservation.id,
-          tg_user_id: tgId,
-        });
-
-        await sendTG(tgId, "💳 Оплатите подарок 👇", {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "Оплатить",
-                  url: payment.confirmation.confirmation_url,
-                },
-              ],
-              [
-                {
-                  text: "❌ Отменить",
-                  callback_data: "CANCEL_PAYMENT:" + reservation.id,
-                },
-              ],
-            ],
-          },
-        });
-
-        return;
       }
 
       // ===== ОТМЕНА =====
@@ -168,13 +147,14 @@ app.post("/telegram", async (req, res) => {
         const reservationId = data.split(":")[1];
 
         await cancelReservation(reservationId);
-
         await sendTG(tgId, "❌ Платёж отменён. Код возвращён в систему.");
-        return;
       }
     }
+
+    return res.sendStatus(200);
   } catch (e) {
     console.error("🔥 TG WEBHOOK ERROR:", e);
+    return res.sendStatus(200);
   }
 });
 
