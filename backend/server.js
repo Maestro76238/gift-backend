@@ -442,7 +442,7 @@ app.post("/yookassa-webhook", async (req, res) => {
 //======send messege====
 async function sendTG(chatId, text, reply_markup = null) {
   await fetch(
-    https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage,
+    `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
