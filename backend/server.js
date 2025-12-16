@@ -311,44 +311,46 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
   return await response.json();
 }
 //=========confirm============
-async function confirmPayment(giftId, tgUserId) {
-  console.log("✅ confirmPayment:", giftId, tgUserId);
+// ================== CONFIRM RESERVATION ==================
+async function confirmReservation(reservation_id, tg_user_id) {
+  console.log("✅ CONFIRM RESERVATION:", reservation_id, tg_user_id);
 
-  // 1. Получаем код
-  const { data: gift, error: fetchError } = await supabase
+  // 1️⃣ находим зарезервированный код
+  const { data: gift, error: findError } = await supabase
     .from("gifts")
     .select("*")
-    .eq("id", giftId)
+    .eq("id", reservation_id)
+    .eq("reserved", true)
     .single();
 
-  if (fetchError || !gift) {
-    console.error("❌ Gift not found:", fetchError);
+  if (findError || !gift) {
+    console.error("❌ Gift not found or not reserved", findError);
     return;
   }
 
-  // 2. Помечаем как использованный
+  // 2️⃣ подтверждаем код
   const { error: updateError } = await supabase
     .from("gifts")
     .update({
-      is_used: true,
-      used_at: new Date().toISOString(),
       reserved: false,
+      is_used: false,
+      tg_user_id: tg_user_id,
+      used_at: null,
     })
-    .eq("id", giftId);
+    .eq("id", reservation_id);
 
   if (updateError) {
-    console.error("❌ Update gift error:", updateError);
+    console.error("❌ Failed to confirm gift", updateError);
     return;
   }
 
-  // 3. Отдаём код пользователю
+  // 3️⃣ отправляем код пользователю
   await sendTG(
-    tgUserId,
-    `🎉 *Оплата успешна!*\n\n🔑 Ваш код:\n\`${gift.code}\`\n\n📦 Подарок готов ❤️,
-    { parse_mode: "Markdown" }`
+    tg_user_id,
+    🎉 <b>Оплата прошла успешно!</b>\n\nВаш секретный код:\n<code>${gift.code}</code>
   );
 
-  console.log("🎁 Code delivered:", gift.code);
+  console.log("🎁 CODE SENT:", gift.code);
 }
 //===========canel==========
 async function cancelReservation(giftId) {
