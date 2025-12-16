@@ -44,7 +44,7 @@ app.post("/telegram", async (req, res) => {
     const text = message.text.trim();
 
     if (text === "/start") {
-      await fetch(`https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -59,6 +59,7 @@ app.post("/telegram", async (req, res) => {
     console.error("❌ TG HANDLER ERROR:", e);
     res.sendStatus(200);
   }
+    res.send("OK");
 });
 
 // ================== TELEGRAM SAFE SEND ==================
