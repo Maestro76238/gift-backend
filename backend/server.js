@@ -149,7 +149,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
     .from("gifts")
     .update({ used: true })
     .eq("code", code)
-    .eq("used", false);
+    .eq("used", false)
     .select();
 
   if (error) {
