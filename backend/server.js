@@ -174,67 +174,45 @@ app.get("/health", (req, res) => {
 
 // ================== GET GIFT ==================
 app.get("/api/get-gift/:code", async (req, res) => {
-  try {
-    const code = req.params.code.toUpperCase();
+  const code = req.params.code.toUpperCase();
 
-    console.log("🎁 CHECK CODE:", code);
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("code, file_url, is_used")
+    .eq("code", code)
+    .single();
 
-    const { data, error } = await supabase
-      .from("gifts")
-      .select("id, code, file_url, is_used")
-      .eq("code", code)
-      .eq("is_used", false)
-      .single();
-
-    console.log("📦 DATA:", data, "ERROR:", error);
-
-    if (!data) {
-      return res.status(404).json({ error: "INVALID_CODE" });
-    }
-
-    return res.json({
-      gift_url: data.file_url || null,
-    });
-  } catch (e) {
-    console.error("🔥 GET GIFT ERROR:", e);
-    return res.status(500).json({ error: "SERVER_ERROR" });
+  if (!data) {
+    return res.status(404).json({ error: "NOT_FOUND" });
   }
+
+  if (data.is_used) {
+    return res.status(400).json({ error: "USED" });
+  }
+
+  res.json({ gift_url: data.file_url });
 });
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
-  try {
-    console.log("➡️ use-gift called");
+  const code = req.params.code.toUpperCase();
 
-    if (!supabase) {
-      console.error("❌ SUPABASE IS NULL");
-      return res.status(500).json({ error: "Supabase not initialized" });
-    }
+  const { data } = await supabase
+    .from("gifts")
+    .update({
+      is_used: true,
+      used_at: new Date().toISOString(),
+    })
+    .eq("code", code)
+    .eq("is_used", false)
+    .select()
+    .single();
 
-    const { code } = req.params;
-    console.log("🔑 CODE:", code);
+  if (!data) {
+    return res.status(400).json({ error: "ALREADY_USED" });
+  }
 
-    const { data, error } = await supabase
-      .from("gifts")
-      .update({ is_used: true,
-                used_at: new Date().toISOString(),
-      })
-      .eq("code", code)
-      .eq("is_used", false)
-      .select("*")
-      .single();
-
-    console.log("📦 DATA:", data);
-    console.log("⚠️ ERROR:", error);
-
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    if (!data || data.length === 0) {
-      return res.status(400).json({ error: "Code not found or already used" });
-    }
-
-    res.json({ success: true });
+  res.json({ success: true });
+});
   } catch (e) {
     console.error("🔥 CATCH ERROR:", e);
     res.status(500).json({ error: "Internal server error" });
