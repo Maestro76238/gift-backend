@@ -142,7 +142,7 @@ app.post("/telegram-webhook", async (req, res) => {
                 [
                   {
                     text: "❌ Отменить",
-                    callback_data: CANCEL_PAYMENT:${reservation.id},
+                    callback_data: `CANCEL_PAYMENT:${reservation.id}`,
                   },
                 ],
               ],
@@ -164,7 +164,7 @@ app.post("/telegram-webhook", async (req, res) => {
 📊 <b>Статистика на сегодня</b>
 
 🔑 Обычные ключи:
-— Осталось: <b>${stats.normal_left}</b> / ${stats.normal_total}
+— Осталось: `<b>${stats.normal_left}</b> / ${stats.normal_total}`
 
 💎 VIP билет:
 ${stats.vip_sold ? "— ✅ уже найден" : "— ❌ ещё в игре"}
