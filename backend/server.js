@@ -72,7 +72,6 @@ async function getTodayStats() {
     vip_sold: (vipUsed?.length || 0) > 0,
   };
 }
-
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/telegram-webhook", async (req, res) => {
   try {
@@ -88,115 +87,99 @@ app.post("/telegram-webhook", async (req, res) => {
         await sendTG(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
           reply_markup: {
             inline_keyboard: [
-              [
-                {
-                  text: "📖 FAQ",
-                  url: "https://telegra.ph/FAQ-12-16-21",
-                },
-              ],
-              [
-                {
-                  text: "📝 Инструкция",
-                  callback_data: "INSTRUCTION",
-                },
-              ],
-              [
-                {
-                  text: "🔑 Купить ключ",
-                  callback_data: "BUY_KEY",
-                },
-              ],
-              [
-                {
-                  text: "Статистика",
-                  callback_data: "STATS",
-                },
-              ],
+              [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+              [{ text: "📝 Инструкция", callback_data: "INSTRUCTION" }],
+              [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
+              [{ text: "📊 Статистика", callback_data: "STATS" }],
             ],
           },
         });
       }
     }
 
-// ================== CALLBACK ==================
-if (update.callback_query) {
-  const cb = update.callback_query;
-  const tgId = cb.from.id;
-  const data = cb.data;
+    // ================== CALLBACK ==================
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      const tgId = cb.from.id;
+      const data = cb.data;
 
-  console.log("➡️ CALLBACK:", data);
+      await fetch(
+        https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ callback_query_id: cb.id }),
+        }
+      );
 
-  // ОБЯЗАТЕЛЬНО отвечаем Telegram
-  await fetch(
-    `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ callback_query_id: cb.id }),
-    }
-  );
+      if (data === "INSTRUCTION") {
+        await sendTG(
+          tgId,
+          "📖 Инструкция:\n\n1️⃣ Купить ключ\n2️⃣ Оплатить\n3️⃣ Получить код"
+        );
+      }
 
-  // ===== ИНСТРУКЦИЯ =====
-  if (data === "INSTRUCTION") {
-    await sendTG(
-      tgId,
-      "📖 Инструкция:\n\n1️⃣ Нажмите «Купить ключ»\n2️⃣ Оплатите\n3️⃣ Получите код\n4️⃣ Проверьте его на сайте"
-    );
-  }
+      if (data === "BUY_KEY") {
+        const reservation = await reserveCode(tgId);
 
-  // ===== ПОКУПКА =====
-  if (data === "BUY_KEY") {
-    const reservation = await reserveCode(tgId);
+        if (!reservation) {
+          await sendTG(tgId, "❌ Коды на сегодня закончились");
+        } else {
+          const payment = await createYooPayment({
+            reservation_id: reservation.id,
+            tg_user_id: tgId,
+          });
 
-    if (!reservation) {
-      await sendTG(tgId, "❌ Коды на сегодня закончились");
-    } else {
-      const payment = await createYooPayment({
-        reservation_id: reservation.id,
-        tg_user_id: tgId,
-      });
+          await sendTG(tgId, "💳 Оплатите 👇", {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "Оплатить",
+                    url: payment.confirmation.confirmation_url,
+                  },
+                ],
+                [
+                  {
+                    text: "❌ Отменить",
+                    callback_data: CANCEL_PAYMENT:${reservation.id},
+                  },
+                ],
+              ],
+            },
+          });
+        }
+      }
 
-      await sendTG(tgId, "💳 Оплатите подарок 👇", {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "Оплатить", url: payment.confirmation.confirmation_url }],
-            [
-              {
-                text: "❌ Отменить",
-                callback_data: `CANCEL_PAYMENT:${reservation.id}`,
-              },
-            ],
-          ],
-        },
-      });
-    }
-  }
+      if (data.startsWith("CANCEL_PAYMENT:")) {
+        const reservationId = data.split(":")[1];
+        await cancelReservation(reservationId);
+        await sendTG(tgId, "❌ Платёж отменён");
+      }
 
-  // ===== ОТМЕНА =====
-  if (data.startsWith("CANCEL_PAYMENT:")) {
-    const reservationId = data.split(":")[1];
-    await cancelReservation(reservationId);
-    await sendTG(tgId, "❌ Платёж отменён. Код возвращён в систему.");
-  }
+      if (data === "STATS") {
+        const stats = await getTodayStats();
 
-  // ===== СТАТИСТИКА =====
-  if (data === "STATS") {
-    const stats = await getTodayStats();
-
-    const text = `
+        const text = `
 📊 <b>Статистика на сегодня</b>
 
 🔑 Обычные ключи:
 — Осталось: <b>${stats.normal_left}</b> / ${stats.normal_total}
 
 💎 VIP билет:
-${stats.vip_sold ? "— ✅ <b>уже найден</b>" : "— ❌ <b>ещё в игре</b>"}
-    `;
+${stats.vip_sold ? "— ✅ уже найден" : "— ❌ ещё в игре"}
+        `;
 
-    await sendTG(tgId, text, { parse_mode: "HTML" });
+        await sendTG(tgId, text, { parse_mode: "HTML" });
+      }
+    }
+
+    return res.sendStatus(200);
+  } catch (e) {
+    console.error("🔥 TG WEBHOOK ERROR:", e);
+    return res.sendStatus(200);
   }
-}
-
+});
 // ================== TELEGRAM SAFE SEND ==================
 
 // ================== TG TEST ==================
