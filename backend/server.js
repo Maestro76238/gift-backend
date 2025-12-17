@@ -368,7 +368,9 @@ async function confirmReservation({ reservation_id, payment_id }) {
   // 📩 Отправляем код в TG
   await sendTG(
     reservation.tg_user_id,
-    `🎁 Ваш код:\n\n${reservation.code}`
+    `🎁 Ваш код:\n\n${reservation.code}
+     Используй его на сайте: https://gift-frontend-poth.onrender.com
+     Удачи`
   );
 }
 //===========canel==========
