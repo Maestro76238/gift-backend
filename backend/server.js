@@ -104,7 +104,7 @@ app.post("/telegram-webhook", async (req, res) => {
       const data = cb.data;
 
       await fetch(
-        https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
+        `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
