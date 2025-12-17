@@ -39,6 +39,39 @@ try {
 } catch (e) {
   console.error("❌ SUPABASE INIT ERROR:", e);
 }
+//===================stats===========
+async function getTodayStats() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // обычные ключи
+  const { data: normalAll } = await supabase
+    .from("gifts")
+    .select("id")
+    .eq("type", "normal")
+    .gte("created_at", today.toISOString());
+
+  const { data: normalUsed } = await supabase
+    .from("gifts")
+    .select("id")
+    .eq("type", "normal")
+    .eq("is_used", true)
+    .gte("created_at", today.toISOString());
+
+  // vip
+  const { data: vipUsed } = await supabase
+    .from("gifts")
+    .select("id")
+    .eq("type", "vip")
+    .eq("is_used", true)
+    .gte("created_at", today.toISOString());
+
+  return {
+    normal_left: (normalAll?.length || 0) - (normalUsed?.lenght || 0),
+    normal_total: normalAll?.length || 0,
+    vip_sold: (vipUsed?.length || 0) > 0,
+  };
+}
 
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/telegram-webhook", async (req, res) => {
@@ -150,6 +183,22 @@ app.post("/telegram-webhook", async (req, res) => {
         await sendTG(tgId, "❌ Платёж отменён. Код возвращён в систему.");
       }
     }
+       // ===== СТАТИСТИКА =====
+      if (data === "STATS") {
+        const stats = await getTodayStats();
+
+        await sendTG(
+          tgId,
+          `📊 <b>Статистика на сегодня</b>\n\n` +
+          `🔑 Обычные ключи:\n` +
+          `— Осталось: <b>${stats.normal_left}</b> / ${stats.normal_total}\n\n` +
+          `💎 VIP билет:\n` +
+          (stats.vip_sold ? "— ✅ <b>уже куплен</b>" : "— ❌ <b>ещё не куплен</b>"),
+        { parse_mode: "HTML" }
+      );
+
+      return;
+    }
 
     return res.sendStatus(200);
   } catch (e) {
@@ -220,49 +269,36 @@ app.post("/api/use-gift/:code", async (req, res) => {
   res.json({ success: true });
 });
 //==========reserved==========
-async function reserveCode(tg_user_id) {
-  console.log("🔒 reserveCode for:", tg_user_id);
-
-  // 🔍 ищем свободный код
-  const { data: gift, error } = await supabase
+async function reserveCode(tg_user_id, isVip = false) {
+  const { data, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("is_used", false)
     .is("reserved_at", null)
-    .limit(1)
-    .single();
+    .eq("type", isVip ? "vip" : "normal")
+    .order("id", { ascending: false }) // чтобы Supabase не ругался
+    .limit(50); // берём пул
 
-  if (error || !gift) {
-    console.log("❌ No free codes");
-    return null;
-  }
+  if (error || !data || data.length === 0) return null;
 
-  // 🔒 создаём резерв
-  const { data: reservation, error: rError } = await supabase
-    .from("reservations")
-    .insert({
-      gift_id: gift.id,
-      code: gift.code,
-      tg_user_id,
-      status: "reserved",
-      reserved_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  // 🎲 выбираем рандомно из пула
+  const gift = data[Math.floor(Math.random() * data.length)];
 
-  if (rError) {
-    console.error("❌ RESERVE ERROR:", rError);
-    return null;
-  }
-
-  // 🔐 помечаем подарок как зарезервированный
-  await supabase
+  const { error: reserveError } = await supabase
     .from("gifts")
     .update({
+      reserved: true,
       reserved_at: new Date().toISOString(),
+      tg_user_id,
     })
-    .eq("id", gift.id);
+    .eq("id", gift.id)
+    .eq("is_used", false)
+    .is("reserved_at", null);
 
+  if (reserveError) return null;
+
+  return gift;
+}
   return reservation;
 }
 //==================create payment=============
