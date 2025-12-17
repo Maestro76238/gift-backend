@@ -41,33 +41,30 @@ try {
 }
 //===================stats===========
 async function getTodayStats() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = new Date().toISOString().slice(0, 10);
 
-  // обычные ключи
   const { data: normalAll } = await supabase
     .from("gifts")
     .select("id")
     .eq("type", "normal")
-    .gte("created_at", today.toISOString());
+    .eq("day", today);
 
   const { data: normalUsed } = await supabase
     .from("gifts")
     .select("id")
     .eq("type", "normal")
     .eq("is_used", true)
-    .gte("created_at", today.toISOString());
+    .eq("day", today);
 
-  // vip
   const { data: vipUsed } = await supabase
     .from("gifts")
     .select("id")
     .eq("type", "vip")
     .eq("is_used", true)
-    .gte("created_at", today.toISOString());
+    .eq("day", today);
 
   return {
-    normal_left: (normalAll?.length || 0) - (normalUsed?.lenght || 0),
+    normal_left: (normalAll?.length || 0) - (normalUsed?.length || 0),
     normal_total: normalAll?.length || 0,
     vip_sold: (vipUsed?.length || 0) > 0,
   };
@@ -245,35 +242,38 @@ app.post("/api/use-gift/:code", async (req, res) => {
 async function reserveCode(tgId) {
   console.log("🔒 reserveCode for:", tgId);
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const { data, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("type", "normal")
     .eq("status", "free")
     .eq("is_used", false)
-    .order("id", { ascending: false }) // порядок не важен
-    .limit(50); // берём пачку
+    .limit(1)
+    .order("random()");
 
   if (error || !data || data.length === 0) {
     console.log("❌ No free codes");
     return null;
   }
 
-  // 🎲 РАНДОМ В JS
-  const gift = data[Math.floor(Math.random() * data.length)];
+  const gift = data[0];
 
   const { error: updError } = await supabase
     .from("gifts")
     .update({
       status: "reserved",
-      tg_user_id: tgId,
+      reserved: true,
       reserved_at: new Date().toISOString(),
+      tg_user_id: tgId,
+      day: today,
     })
     .eq("id", gift.id)
-    .eq("status", "free"); // защита от дабла
+    .eq("status", "free");
 
   if (updError) {
-    console.log("❌ Failed to reserve");
+    console.error("❌ reserve update error:", updError);
     return null;
   }
 
@@ -316,15 +316,20 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
 }
 // ================== CONFIRM RESERVATION ==================
 async function confirmReservation({ reservation_id, payment_id }) {
+  console.log("✅ confirmReservation:", reservation_id);
+
   // 🔒 Берём резерв
-  const { data: reservation } = await supabase
+  const { data: reservation, error } = await supabase
     .from("reservations")
     .select("*")
     .eq("id", reservation_id)
     .single();
 
   // ❌ Нет резерва
-  if (!reservation) return;
+  if (error || !reservation) {
+    console.log("❌ Reservation not found");
+    return;
+  }
 
   // ❌ Уже подтверждён (АНТИ ДАБЛ)
   if (reservation.status === "paid") {
@@ -347,33 +352,58 @@ async function confirmReservation({ reservation_id, payment_id }) {
     })
     .eq("id", reservation_id);
 
-  // ✅ Выдаём код
+  // ✅ Помечаем подарок использованным
   await supabase
     .from("gifts")
     .update({
+      status: "used",
       is_used: true,
+      reserved: false,
       used_at: new Date().toISOString(),
       tg_user_id: reservation.tg_user_id,
     })
     .eq("id", reservation.gift_id);
 
-  // 📩 Отправляем код в TG
+  // 📩 Отправляем код в Telegram
   await sendTG(
     reservation.tg_user_id,
-    `🎁 Ваш код:\n\n${reservation.code}
-     Используй его на сайте: https://gift-frontend-poth.onrender.com
-     Удачи`
+    `🎁 Ваш код:\n\n<b>${reservation.code}</b>\n\n` +
+    `Используйте его на сайте:\n` +
+    `https://gift-frontend-poth.onrender.com`,
+    { parse_mode: "HTML" }
   );
+
+  console.log("🎉 Gift delivered to", reservation.tg_user_id);
 }
-//===========canel==========
+//===========canel===========
 async function cancelReservation(reservationId) {
   console.log("❌ cancelReservation:", reservationId);
 
+  // берём резерв
+  const { data: reservation } = await supabase
+    .from("reservations")
+    .select("*")
+    .eq("id", reservationId)
+    .single();
+
+  if (!reservation) return;
+
+  // освобождаем подарок
   await supabase
     .from("gifts")
     .update({
+      status: "free",
+      reserved: false,
       reserved_by: null,
       reserved_at: null,
+    })
+    .eq("id", reservation.gift_id);
+
+  // помечаем резерв отменённым
+  await supabase
+    .from("reservations")
+    .update({
+      status: "cancelled",
     })
     .eq("id", reservationId);
 }
