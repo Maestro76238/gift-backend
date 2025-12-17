@@ -212,7 +212,6 @@ app.post("/api/use-gift/:code", async (req, res) => {
   }
 
   res.json({ success: true });
-});
   } catch (e) {
     console.error("🔥 CATCH ERROR:", e);
     res.status(500).json({ error: "Internal server error" });
