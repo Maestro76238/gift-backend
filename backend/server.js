@@ -289,9 +289,7 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
       Authorization:
         "Basic " +
         Buffer.from(
-          process.env.YOOKASSA_SHOP_ID +
-            ":" +
-            process.env.YOOKASSA_SECRET_KEY
+          process.env.YOOKASSA_SHOP_ID + ":" + process.env.YOOKASSA_SECRET_KEY
         ).toString("base64"),
     },
     body: JSON.stringify({
@@ -299,14 +297,14 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
         value: "100.00",
         currency: "RUB",
       },
-      capture: true,
       confirmation: {
         type: "redirect",
         return_url: "https://example.com/success",
       },
+      capture: true,
       description: "Секретный подарок",
       metadata: {
-        reservation_id,
+        gift_id: reservation_id, // 👈 ВАЖНО
         tg_user_id,
       },
     }),
@@ -376,70 +374,98 @@ async function confirmReservation({ reservation_id, payment_id }) {
   console.log("🎉 Gift delivered to", reservation.tg_user_id);
 }
 //===========canel===========
-async function cancelReservation(reservationId) {
-  console.log("❌ cancelReservation:", reservationId);
-
-  // берём резерв
-  const { data: reservation } = await supabase
-    .from("reservations")
-    .select("*")
-    .eq("id", reservationId)
-    .single();
-
-  if (!reservation) return;
-
-  // освобождаем подарок
+async function cancelReservation(giftId) {
   await supabase
     .from("gifts")
     .update({
       status: "free",
       reserved: false,
-      reserved_by: null,
       reserved_at: null,
+      tg_user_id: null,
     })
-    .eq("id", reservation.gift_id);
-
-  // помечаем резерв отменённым
-  await supabase
-    .from("reservations")
-    .update({
-      status: "cancelled",
-    })
-    .eq("id", reservationId);
+    .eq("id", giftId)
+    .eq("is_used", false);
 }
 // ================== YOOKASSA WEBHOOK ==================
-app.post("/yookassa", async (req, res) => {
+app.post("/yookassa-webhook", async (req, res) => {
   try {
     const event = req.body;
 
-    console.log("📩 YOOKASSA:", event.event);
+    console.log("💳 YOOKASSA EVENT:", JSON.stringify(event, null, 2));
 
     if (event.event !== "payment.succeeded") {
-      return res.send("ok");
+      return res.sendStatus(200);
     }
 
     const payment = event.object;
-    const { reservation_id, tg_user_id } = payment.metadata;
-    const gift = await confirmReservation(reservation_id);
+    const paymentId = payment.id;
+    const giftId = payment.metadata?.gift_id;
+    const tgUserId = payment.metadata?.tg_user_id;
 
-    if (!gift) return res.send("ok");
-
-    if (gift.type === "vip") {
-      await sendTG(
-        tg_user_id,
-        `🎟 <b>ПОЗДРАВЛЯЕМ!</b>\n\nВы получили <b>VIP билет</b> 🎉\n\nВы участвуете в розыгрыше <b>100 000 ₽</b> 31 декабря`
-      );
-    } else {
-      await sendTG(
-        tg_user_id,
-    `✅ Оплата прошла!\n\nВаш код:\n<code>${gift.code}</code>`
-      );
+    if (!paymentId⠵⠞⠵⠟⠺⠞⠞⠺⠟⠺⠞!tgUserId) {
+      console.error("❌ Missing metadata");
+      return res.sendStatus(200);
     }
 
-    res.send("ok");
+    // 🔒 АНТИ-ДАБЛ №1 — платёж уже обработан?
+    const { data: alreadyPaid } = await supabase
+      .from("gifts")
+      .select("id")
+      .eq("payment_id", paymentId)
+      .limit(1);
+
+    if (alreadyPaid && alreadyPaid.length > 0) {
+      console.log("⚠️ Payment already processed:", paymentId);
+      return res.sendStatus(200);
+    }
+
+    // 🔒 АНТИ-ДАБЛ №2 — код уже использован?
+    const { data: gift } = await supabase
+      .from("gifts")
+      .select("*")
+      .eq("id", giftId)
+      .limit(1)
+      .single();
+
+    if (!gift) {
+      console.error("❌ Gift not found");
+      return res.sendStatus(200);
+    }
+
+    if (gift.is_used === true) {
+      console.log("⚠️ Gift already used:", giftId);
+      return res.sendStatus(200);
+    }
+
+    // ✅ ФИКСИРУЕМ КОД
+    const { error: updError } = await supabase
+      .from("gifts")
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString(),
+        payment_id: paymentId,
+        status: "used",
+      })
+      .eq("id", giftId)
+      .eq("is_used", false);
+
+    if (updError) {
+      console.error("❌ Update error:", updError);
+      return res.sendStatus(200);
+    }
+
+    // 🎁 ОТПРАВЛЯЕМ КОД
+    await sendTG(
+      tgUserId,
+      🎁 <b>Ваш подарок готов!</b>\n\n🔑 Код:\n<b>${gift.code}</b>\n\nСпасибо за участие ❤️,
+      { parse_mode: "HTML" }
+    );
+
+    console.log("✅ Gift delivered:", gift.code);
+    return res.sendStatus(200);
   } catch (e) {
     console.error("🔥 YOOKASSA WEBHOOK ERROR:", e);
-    res.send("ok");
+    return res.sendStatus(200);
   }
 });
 
