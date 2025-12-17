@@ -299,8 +299,7 @@ async function reserveCode(tg_user_id, isVip = false) {
 
   return gift;
 }
-  return reservation;
-}
+
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
   // 👉 1. Проверяем, не создан ли уже платёж
