@@ -128,7 +128,7 @@ if (update.callback_query) {
 
   // ОБЯЗАТЕЛЬНО отвечаем Telegram
   await fetch(
-    https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
+    `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -163,7 +163,7 @@ if (update.callback_query) {
             [
               {
                 text: "❌ Отменить",
-                callback_data: CANCEL_PAYMENT:${reservation.id},
+                `callback_data: CANCEL_PAYMENT:${reservation.id}`,
               },
             ],
           ],
