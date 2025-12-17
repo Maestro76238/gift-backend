@@ -196,7 +196,10 @@ app.get("/api/get-gift/:code", async (req, res) => {
 app.post("/api/use-gift/:code", async (req, res) => {
   const code = req.params.code.toUpperCase();
 
-  const { data } = await supabase
+  console.log("➡️ use-gift called");
+  console.log("🔑 CODE:", code);
+
+  const { data, error } = await supabase
     .from("gifts")
     .update({
       is_used: true,
@@ -207,13 +210,15 @@ app.post("/api/use-gift/:code", async (req, res) => {
     .select()
     .single();
 
-  if (!data) {
-    return res.status(400).json({ error: "ALREADY_USED" });
+  console.log("📦 DATA:", data);
+  console.log("⚠️ ERROR:", error);
+
+  if (error || !data) {
+    return res.status(400).json({ error: "ALREADY_USED_OR_NOT_FOUND" });
   }
 
   res.json({ success: true });
 });
-
 //==========reserved==========
 async function reserveCode(tgUserId) {
   console.log("🔒 reserveCode for:", tgUserId);
