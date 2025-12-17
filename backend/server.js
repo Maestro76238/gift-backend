@@ -457,7 +457,7 @@ app.post("/yookassa-webhook", async (req, res) => {
     // 🎁 ОТПРАВЛЯЕМ КОД
     await sendTG(
       tgUserId,
-      🎁 <b>Ваш подарок готов!</b>\n\n🔑 Код:\n<b>${gift.code}</b>\n\nСпасибо за участие ❤️,
+      `🎁 <b>Ваш подарок готов!</b>\n\n🔑 Код:\n<b>${gift.code}</b>\n\nСпасибо за участие ❤️`,
       { parse_mode: "HTML" }
     );
 
