@@ -245,47 +245,33 @@ app.post("/api/use-gift/:code", async (req, res) => {
 async function reserveCode(tgId) {
   console.log("🔒 reserveCode for:", tgId);
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  // берём ВСЕ свободные коды СЕГОДНЯ
-  const { data: freeCodes, error } = await supabase
+  const { data, error } = await supabase
     .from("gifts")
-    .select("id, code, type")
+    .select("*")
+    .eq("type", "normal")
     .eq("is_used", false)
-    .is("reserved_by", null)
-    .eq("batch_date", today);
+    .eq("reserved", false)
+    .eq("day", new Date().toISOString().slice(0, 10))
+    .order("random()")
+    .limit(1);
 
-  if (error) {
-    console.error("❌ reserveCode error:", error);
+  if (error || ! data || data.length === 0) {
+    console.log("❌ No free codes");
     return null;
   }
 
-  if (!freeCodes || freeCodes.length === 0) {
-    return null;
-  }
+  const gift = data[0];
 
-  // 🎲 РАНДОМ ИЗ ВСЕХ (VIP ТАМ ОДИН)
-  const picked =
-    freeCodes[Math.floor(Math.random() * freeCodes.length)];
-
-  const { data, error: updErr } = await supabase
+  await supabase
     .from("gifts")
     .update({
-      reserved_by: String(tgId),
+      reserved: true,
+      reserved_by: tgId,
       reserved_at: new Date().toISOString(),
     })
-    .eq("id", picked.id)
-    .select()
-    .single();
+    .eq("id", gift.id);
 
-  if (updErr) {
-    console.error("❌ reserve update error:", updErr);
-    return null;
-  }
-
-  console.log("🎁 RESERVED:", data.code, data.type);
-
-  return data;
+  return gift;
 }
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
