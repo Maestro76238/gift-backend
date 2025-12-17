@@ -220,37 +220,50 @@ app.post("/api/use-gift/:code", async (req, res) => {
   res.json({ success: true });
 });
 //==========reserved==========
-async function reserveCode(tgUserId) {
-  console.log("🔒 reserveCode for:", tgUserId);
+async function reserveCode(tg_user_id) {
+  console.log("🔒 reserveCode for:", tg_user_id);
 
-  const { data, error } = await supabase
+  // 🔍 ищем свободный код
+  const { data: gift, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("is_used", false)
-    .eq("reserved", false)
+    .is("reserved_at", null)
     .limit(1)
     .single();
 
-  if (error || !data) {
+  if (error || !gift) {
     console.log("❌ No free codes");
     return null;
   }
 
-  const { error: updateError } = await supabase
-    .from("gifts")
-    .update({
-      reserved: true,
+  // 🔒 создаём резерв
+  const { data: reservation, error: rError } = await supabase
+    .from("reservations")
+    .insert({
+      gift_id: gift.id,
+      code: gift.code,
+      tg_user_id,
+      status: "reserved",
       reserved_at: new Date().toISOString(),
-      tg_user_id: tgUserId,
     })
-    .eq("id", data.id);
+    .select()
+    .single();
 
-  if (updateError) {
-    console.error("❌ Reserve update error:", updateError);
+  if (rError) {
+    console.error("❌ RESERVE ERROR:", rError);
     return null;
   }
 
-  return data;
+  // 🔐 помечаем подарок как зарезервированный
+  await supabase
+    .from("gifts")
+    .update({
+      reserved_at: new Date().toISOString(),
+    })
+    .eq("id", gift.id);
+
+  return reservation;
 }
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
