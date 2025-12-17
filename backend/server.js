@@ -402,7 +402,7 @@ app.post("/yookassa-webhook", async (req, res) => {
     const giftId = payment.metadata?.gift_id;
     const tgUserId = payment.metadata?.tg_user_id;
 
-    if (!paymentId⠵⠞⠵⠟⠺⠞⠞⠺⠟⠺⠞!tgUserId) {
+    if (!paymentId || !giftId || !tgUserId) {
       console.error("❌ Missing metadata");
       return res.sendStatus(200);
     }
