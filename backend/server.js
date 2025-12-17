@@ -106,6 +106,12 @@ app.post("/telegram-webhook", async (req, res) => {
                   callback_data: "BUY_KEY",
                 },
               ],
+              [
+                {
+                  text: "Статистика",
+                  callback_data: "STATS",
+                },
+              ],
             ],
           },
         });
