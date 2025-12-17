@@ -249,27 +249,33 @@ async function reserveCode(tgId) {
     .from("gifts")
     .select("*")
     .eq("type", "normal")
+    .eq("status", "free")
     .eq("is_used", false)
-    .eq("reserved", false)
-    .eq("day", new Date().toISOString().slice(0, 10))
-    .order("random()")
-    .limit(1);
+    .order("id", { ascending: false }) // порядок не важен
+    .limit(50); // берём пачку
 
-  if (error || ! data || data.length === 0) {
+  if (error || !data || data.length === 0) {
     console.log("❌ No free codes");
     return null;
   }
 
-  const gift = data[0];
+  // 🎲 РАНДОМ В JS
+  const gift = data[Math.floor(Math.random() * data.length)];
 
-  await supabase
+  const { error: updError } = await supabase
     .from("gifts")
     .update({
-      reserved: true,
-      reserved_by: tgId,
+      status: "reserved",
+      tg_user_id: tgId,
       reserved_at: new Date().toISOString(),
     })
-    .eq("id", gift.id);
+    .eq("id", gift.id)
+    .eq("status", "free"); // защита от дабла
+
+  if (updError) {
+    console.log("❌ Failed to reserve");
+    return null;
+  }
 
   return gift;
 }
