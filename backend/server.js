@@ -163,7 +163,7 @@ if (update.callback_query) {
             [
               {
                 text: "❌ Отменить",
-                `callback_data: CANCEL_PAYMENT:${reservation.id}`,
+                callback_data: `CANCEL_PAYMENT:${reservation.id}`,
               },
             ],
           ],
