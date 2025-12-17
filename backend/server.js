@@ -118,100 +118,84 @@ app.post("/telegram-webhook", async (req, res) => {
       }
     }
 
-    // ================== CALLBACK ==================
-    if (update.callback_query) {
-      const cb = update.callback_query;
-      const tgId = cb.from.id;
-      const data = cb.data;
+// ================== CALLBACK ==================
+if (update.callback_query) {
+  const cb = update.callback_query;
+  const tgId = cb.from.id;
+  const data = cb.data;
 
-      console.log("➡️ CALLBACK:", data);
+  console.log("➡️ CALLBACK:", data);
 
-      // ❗️ ОБЯЗАТЕЛЬНО отвечаем Telegram
-      await fetch(
-        `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: cb.id,
-          }),
-        }
-      );
-
-      // ===== ИНСТРУКЦИЯ =====
-      if (data === "INSTRUCTION") {
-        await sendTG(
-          tgId,
-          "📖 Инструкция:\n\n1️⃣ Нажмите «Купить ключ»\n2️⃣ Оплатите\n3️⃣ Получите код\n4️⃣ Проверьте его на сайте"
-        );
-      }
-
-      // ===== ПОКУПКА =====
-      if (data === "BUY_KEY") {
-        console.log("🛒 BUY_KEY pressed by", tgId);
-
-        const reservation = await reserveCode(tgId);
-
-        if (!reservation) {
-          await sendTG(tgId, "❌ Коды временно закончились");
-        } else {
-          const payment = await createYooPayment({
-            reservation_id: reservation.id,
-            tg_user_id: tgId,
-          });
-
-          await sendTG(tgId, "💳 Оплатите подарок 👇", {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "Оплатить",
-                    url: payment.confirmation.confirmation_url,
-                  },
-                ],
-                [
-                  {
-                    text: "❌ Отменить",
-                    callback_data: `CANCEL_PAYMENT:${reservation.id}`,
-                  },
-                ],
-              ],
-            },
-          });
-        }
-      }
-
-      // ===== ОТМЕНА =====
-      if (data.startsWith("CANCEL_PAYMENT:")) {
-        const reservationId = data.split(":")[1];
-
-        await cancelReservation(reservationId);
-        await sendTG(tgId, "❌ Платёж отменён. Код возвращён в систему.");
-      }
+  // ОБЯЗАТЕЛЬНО отвечаем Telegram
+  await fetch(
+    https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: cb.id }),
     }
-       // ===== СТАТИСТИКА =====
-      if (data === "STATS") {
-        const stats = await getTodayStats();
+  );
 
-        await sendTG(
-          tgId,
-          `📊 <b>Статистика на сегодня</b>\n\n` +
-          `🔑 Обычные ключи:\n` +
-          `— Осталось: <b>${stats.normal_left}</b> / ${stats.normal_total}\n\n` +
-          `💎 VIP билет:\n` +
-          (stats.vip_sold ? "— ✅ <b>уже куплен</b>" : "— ❌ <b>ещё не куплен</b>"),
-        { parse_mode: "HTML" }
-      );
-
-      return;
-    }
-
-    return res.sendStatus(200);
-  } catch (e) {
-    console.error("🔥 TG WEBHOOK ERROR:", e);
-    return res.sendStatus(200);
+  // ===== ИНСТРУКЦИЯ =====
+  if (data === "INSTRUCTION") {
+    await sendTG(
+      tgId,
+      "📖 Инструкция:\n\n1️⃣ Нажмите «Купить ключ»\n2️⃣ Оплатите\n3️⃣ Получите код\n4️⃣ Проверьте его на сайте"
+    );
   }
-});
+
+  // ===== ПОКУПКА =====
+  if (data === "BUY_KEY") {
+    const reservation = await reserveCode(tgId);
+
+    if (!reservation) {
+      await sendTG(tgId, "❌ Коды на сегодня закончились");
+    } else {
+      const payment = await createYooPayment({
+        reservation_id: reservation.id,
+        tg_user_id: tgId,
+      });
+
+      await sendTG(tgId, "💳 Оплатите подарок 👇", {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "Оплатить", url: payment.confirmation.confirmation_url }],
+            [
+              {
+                text: "❌ Отменить",
+                callback_data: CANCEL_PAYMENT:${reservation.id},
+              },
+            ],
+          ],
+        },
+      });
+    }
+  }
+
+  // ===== ОТМЕНА =====
+  if (data.startsWith("CANCEL_PAYMENT:")) {
+    const reservationId = data.split(":")[1];
+    await cancelReservation(reservationId);
+    await sendTG(tgId, "❌ Платёж отменён. Код возвращён в систему.");
+  }
+
+  // ===== СТАТИСТИКА =====
+  if (data === "STATS") {
+    const stats = await getTodayStats();
+
+    const text = `
+📊 <b>Статистика на сегодня</b>
+
+🔑 Обычные ключи:
+— Осталось: <b>${stats.normal_left}</b> / ${stats.normal_total}
+
+💎 VIP билет:
+${stats.vip_sold ? "— ✅ <b>уже найден</b>" : "— ❌ <b>ещё в игре</b>"}
+    `;
+
+    await sendTG(tgId, text, { parse_mode: "HTML" });
+  }
+}
 
 // ================== TELEGRAM SAFE SEND ==================
 
@@ -280,76 +264,59 @@ async function reserveCode(tgId) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // берём пачку свободных кодов СЕГОДНЯ
+  // берём ВСЕ свободные коды СЕГОДНЯ
   const { data: freeCodes, error } = await supabase
     .from("gifts")
-    .select("id, code")
-    .eq("type", "normal")
+    .select("id, code, type")
     .eq("is_used", false)
     .is("reserved_by", null)
-    .eq("batch_date", today)
-    .limit(200);
+    .eq("batch_date", today);
 
   if (error) {
-    console.error("❌ reserveCode select error:", error);
+    console.error("❌ reserveCode error:", error);
     return null;
   }
 
   if (!freeCodes || freeCodes.length === 0) {
-    console.log("❌ No free codes");
     return null;
   }
 
-  // 🎲 РАНДОМ
-  const randomCode =
+  // 🎲 РАНДОМ ИЗ ВСЕХ (VIP ТАМ ОДИН)
+  const picked =
     freeCodes[Math.floor(Math.random() * freeCodes.length)];
 
-  // 🔒 резервируем
-  const { data, error: updateError } = await supabase
+  const { data, error: updErr } = await supabase
     .from("gifts")
     .update({
       reserved_by: String(tgId),
       reserved_at: new Date().toISOString(),
     })
-    .eq("id", randomCode.id)
+    .eq("id", picked.id)
     .select()
     .single();
 
-  if (updateError) {
-    console.error("❌ reserveCode update error:", updateError);
+  if (updErr) {
+    console.error("❌ reserve update error:", updErr);
     return null;
   }
 
-  console.log("✅ Reserved code:", data.code);
+  console.log("🎁 RESERVED:", data.code, data.type);
 
-  return data; // ← ВАЖНО: возвращаем ВЕСЬ объект
+  return data;
 }
-
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
-  // 👉 1. Проверяем, не создан ли уже платёж
-  const { data: existing } = await supabase
-    .from("reservations")
-    .select("payment_id")
-    .eq("id", reservation_id)
-    .single();
-
-  if (existing?.payment_id) {
-    throw new Error("PAYMENT_ALREADY_CREATED");
-  }
-
-  // 👉 2. Создаём платёж
-  const idempotenceKey = crypto.randomUUID();
-
   const response = await fetch("https://api.yookassa.ru/v3/payments", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Idempotence-Key": idempotenceKey,
+      "Idempotence-Key": crypto.randomUUID(),
       Authorization:
         "Basic " +
         Buffer.from(
-          process.env.YOOKASSA_SHOP_ID + ":" + process.env.YOOKASSA_SECRET_KEY
+          process.env.YOOKASSA_SHOP_ID +
+            ":" +
+            process.env.YOOKASSA_SECRET_KEY
         ).toString("base64"),
     },
     body: JSON.stringify({
@@ -357,11 +324,11 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
         value: "100.00",
         currency: "RUB",
       },
+      capture: true,
       confirmation: {
         type: "redirect",
         return_url: "https://example.com/success",
       },
-      capture: true,
       description: "Секретный подарок",
       metadata: {
         reservation_id,
@@ -370,17 +337,7 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
     }),
   });
 
-  const payment = await response.json();
-
-  // 👉 3. Сохраняем payment_id (АНТИ ДАБЛ)
-  await supabase
-    .from("reservations")
-    .update({
-      payment_id: payment.id,
-    })
-    .eq("id", reservation_id);
-
-  return payment;
+  return await response.json();
 }
 // ================== CONFIRM RESERVATION ==================
 async function confirmReservation({ reservation_id, payment_id }) {
@@ -444,23 +401,38 @@ async function cancelReservation(reservationId) {
     .eq("id", reservationId);
 }
 // ================== YOOKASSA WEBHOOK ==================
-app.post("/yookassa-webhook", async (req, res) => {
+app.post("/yookassa", async (req, res) => {
   try {
     const event = req.body;
 
-    if (event.event === "payment.succeeded") {
-      const payment = event.object;
+    console.log("📩 YOOKASSA:", event.event);
 
-      await confirmReservation({
-        reservation_id: payment.metadata.reservation_id,
-        payment_id: payment.id,
-      });
+    if (event.event !== "payment.succeeded") {
+      return res.send("ok");
     }
 
-    res.sendStatus(200);
+    const payment = event.object;
+    const { reservation_id, tg_user_id } = payment.metadata;
+    const gift = await confirmReservation(reservation_id);
+
+    if (!gift) return res.send("ok");
+
+    if (gift.type === "vip") {
+      await sendTG(
+        tg_user_id,
+        `🎟 <b>ПОЗДРАВЛЯЕМ!</b>\n\nВы получили <b>VIP билет</b> 🎉\n\nВы участвуете в розыгрыше <b>100 000 ₽</b> 31 декабря`
+      );
+    } else {
+      await sendTG(
+        tg_user_id,
+    `✅ Оплата прошла!\n\nВаш код:\n<code>${gift.code}</code>`
+      );
+    }
+
+    res.send("ok");
   } catch (e) {
     console.error("🔥 YOOKASSA WEBHOOK ERROR:", e);
-    res.sendStatus(200);
+    res.send("ok");
   }
 });
 
