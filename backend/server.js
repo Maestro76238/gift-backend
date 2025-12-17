@@ -275,35 +275,54 @@ app.post("/api/use-gift/:code", async (req, res) => {
   res.json({ success: true });
 });
 //==========reserved==========
-async function reserveCode(tg_user_id, isVip = false) {
-  const { data, error } = await supabase
+async function reserveCode(tgId) {
+  console.log("🔒 reserveCode for:", tgId);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // берём пачку свободных кодов СЕГОДНЯ
+  const { data: freeCodes, error } = await supabase
     .from("gifts")
-    .select("*")
+    .select("id, code")
+    .eq("type", "normal")
     .eq("is_used", false)
-    .is("reserved_at", null)
-    .eq("type", isVip ? "vip" : "normal")
-    .order("id", { ascending: false }) // чтобы Supabase не ругался
-    .limit(50); // берём пул
+    .is("reserved_by", null)
+    .eq("batch_date", today)
+    .limit(200);
 
-  if (error || !data || data.length === 0) return null;
+  if (error) {
+    console.error("❌ reserveCode select error:", error);
+    return null;
+  }
 
-  // 🎲 выбираем рандомно из пула
-  const gift = data[Math.floor(Math.random() * data.length)];
+  if (!freeCodes || freeCodes.length === 0) {
+    console.log("❌ No free codes");
+    return null;
+  }
 
-  const { error: reserveError } = await supabase
+  // 🎲 РАНДОМ
+  const randomCode =
+    freeCodes[Math.floor(Math.random() * freeCodes.length)];
+
+  // 🔒 резервируем
+  const { data, error: updateError } = await supabase
     .from("gifts")
     .update({
-      reserved: true,
+      reserved_by: String(tgId),
       reserved_at: new Date().toISOString(),
-      tg_user_id,
     })
-    .eq("id", gift.id)
-    .eq("is_used", false)
-    .is("reserved_at", null);
+    .eq("id", randomCode.id)
+    .select()
+    .single();
 
-  if (reserveError) return null;
+  if (updateError) {
+    console.error("❌ reserveCode update error:", updateError);
+    return null;
+  }
 
-  return gift;
+  console.log("✅ Reserved code:", data.code);
+
+  return data; // ← ВАЖНО: возвращаем ВЕСЬ объект
 }
 
 //==================create payment=============
@@ -413,15 +432,16 @@ async function confirmReservation({ reservation_id, payment_id }) {
   );
 }
 //===========canel==========
-async function cancelReservation(giftId) {
+async function cancelReservation(reservationId) {
+  console.log("❌ cancelReservation:", reservationId);
+
   await supabase
     .from("gifts")
     .update({
-      reserved: false,
+      reserved_by: null,
       reserved_at: null,
-      tg_user_id: null,
     })
-    .eq("id", giftId);
+    .eq("id", reservationId);
 }
 // ================== YOOKASSA WEBHOOK ==================
 app.post("/yookassa-webhook", async (req, res) => {
