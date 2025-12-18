@@ -235,39 +235,39 @@ async function reserveCode(tgId) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data, error } = await supabase
+  // 1️⃣ берём ТОЛЬКО free
+  const { data: gift, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("type", "normal")
     .eq("status", "free")
-    .eq("is_used", false)
-    .eq("reserved", false)
-    .eq("day", today)
     .order("random()")
     .limit(1)
     .single();
 
-  if (error || !data) {
-    console.log("❌ No free codes", error);
+  if (error || !gift) {
+    console.log("❌ No free codes");
     return null;
   }
 
+  // 2️⃣ атомарно резервируем
   const { error: updateError } = await supabase
     .from("gifts")
     .update({
-      reserved: true,
       status: "reserved",
+      reserved: true,
       reserved_at: new Date().toISOString(),
       tg_user_id: tgId,
     })
-    .eq("id", data.id);
+    .eq("id", gift.id)
+    .eq("status", "free"); // 🔥 анти-дабл
 
   if (updateError) {
     console.error("❌ reserve update error:", updateError);
     return null;
   }
 
-  return data;
+  return gift;
 }
 //==================create payment=============
 async function createYooPayment({ reservation_id, tg_user_id }) {
@@ -303,29 +303,27 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
   return await response.json();
 }
 // ================== CONFIRM RESERVATION ==================
-async function confirmReservation({ reservation_id, payment_id }) {
-  const { data, error } = await supabase
+async function confirmReservation(reservationId, paymentId) {
+  const { error } = await supabase
     .from("gifts")
     .update({
+      status: "used",
+      is_used: true,
       reserved: false,
-      status: "sold",
-      payment_id,
+      payment_id: paymentId,
+      used_at: new Date().toISOString(),
     })
-    .eq("id", reservation_id)
-    .eq("status", "reserved")
-    .select()
-    .single();
+    .eq("id", reservationId)
+    .eq("status", "reserved"); // 🔒 защита
 
-  if (error || !data) {
+  if (error) {
     console.error("❌ confirmReservation error:", error);
-    return null;
+    throw error;
   }
-
-  return data;
 }
 //===========canel===========
-async function cancelReservation(giftId) {
-  await supabase
+async function cancelReservation(reservationId) {
+  const { error } = await supabase
     .from("gifts")
     .update({
       status: "free",
@@ -333,8 +331,12 @@ async function cancelReservation(giftId) {
       reserved_at: null,
       tg_user_id: null,
     })
-    .eq("id", giftId)
-    .eq("is_used", false);
+    .eq("id", reservationId)
+    .eq("status", "reserved");
+
+  if (error) {
+    console.error("❌ cancelReservation error:", error);
+  }
 }
 // ================== YOOKASSA WEBHOOK ==================
 app.post("/yookassa-webhook", async (req, res) => {
