@@ -192,48 +192,39 @@ app.get("/health", (req, res) => {
 });
 
 // ================== GET GIFT ==================
-app.get("/api/get-gift/:code", async (req, res) => {
-  const code = req.params.code.toUpperCase();
+app.post("/api/check-gift", async (req, res) => {
+  const { code } = req.body;
 
   const { data, error } = await supabase
     .from("gifts")
-    .select("code, file_url, is_used")
+    .select("file_url")
     .eq("code", code)
+    .eq("status", "sold")
+    .eq("is_used", false)
     .single();
 
-  if (!data) {
-    return res.status(404).json({ error: "NOT_FOUND" });
-  }
-
-  if (data.is_used) {
-    return res.status(400).json({ error: "USED" });
+  if (error || !data) {
+    return res.status(400).json({ error: "INVALID_CODE" });
   }
 
   res.json({ gift_url: data.file_url });
 });
 // ================== USE GIFT ==================
 app.post("/api/use-gift/:code", async (req, res) => {
-  const code = req.params.code.toUpperCase();
+  const { code } = req.params;
 
-  console.log("➡️ use-gift called");
-  console.log("🔑 CODE:", code);
-
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("gifts")
     .update({
       is_used: true,
+      status: "used",
       used_at: new Date().toISOString(),
     })
     .eq("code", code)
-    .eq("is_used", false)
-    .select()
-    .single();
+    .eq("status", "sold");
 
-  console.log("📦 DATA:", data);
-  console.log("⚠️ ERROR:", error);
-
-  if (error || !data) {
-    return res.status(400).json({ error: "ALREADY_USED_OR_NOT_FOUND" });
+  if (error) {
+    return res.status(500).json({ error: error.message });
   }
 
   res.json({ success: true });
@@ -318,64 +309,24 @@ async function createYooPayment({ reservation_id, tg_user_id }) {
 }
 // ================== CONFIRM RESERVATION ==================
 async function confirmReservation({ reservation_id, payment_id }) {
-  console.log("✅ confirmReservation:", reservation_id);
-
-  // 🔒 Берём резерв
-  const { data: reservation, error } = await supabase
-    .from("reservations")
-    .select("*")
-    .eq("id", reservation_id)
-    .single();
-
-  // ❌ Нет резерва
-  if (error || !reservation) {
-    console.log("❌ Reservation not found");
-    return;
-  }
-
-  // ❌ Уже подтверждён (АНТИ ДАБЛ)
-  if (reservation.status === "paid") {
-    console.log("⚠️ Payment already processed:", payment_id);
-    return;
-  }
-
-  // ❌ payment_id не совпадает
-  if (reservation.payment_id !== payment_id) {
-    console.log("⚠️ Payment ID mismatch");
-    return;
-  }
-
-  // ✅ Подтверждаем резерв
-  await supabase
-    .from("reservations")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-    })
-    .eq("id", reservation_id);
-
-  // ✅ Помечаем подарок использованным
-  await supabase
+  const { data, error } = await supabase
     .from("gifts")
     .update({
-      status: "used",
-      is_used: true,
       reserved: false,
-      used_at: new Date().toISOString(),
-      tg_user_id: reservation.tg_user_id,
+      status: "sold",
+      payment_id,
     })
-    .eq("id", reservation.gift_id);
+    .eq("id", reservation_id)
+    .eq("status", "reserved")
+    .select()
+    .single();
 
-  // 📩 Отправляем код в Telegram
-  await sendTG(
-    reservation.tg_user_id,
-    `🎁 Ваш код:\n\n<b>${reservation.code}</b>\n\n` +
-    `Используйте его на сайте:\n` +
-    `https://gift-frontend-poth.onrender.com`,
-    { parse_mode: "HTML" }
-  );
+  if (error || !data) {
+    console.error("❌ confirmReservation error:", error);
+    return null;
+  }
 
-  console.log("🎉 Gift delivered to", reservation.tg_user_id);
+  return data;
 }
 //===========canel===========
 async function cancelReservation(giftId) {
