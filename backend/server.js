@@ -240,26 +240,37 @@ app.post("/api/use-gift/:code", async (req, res) => {
 });
 //==========reserved==========
 async function reserveCode(tgId) {
-  console.log("🔒 reserveCode for:", tgId);
+  const { count } = await supabase
+    .from("gifts")
+    .select("*", { count: "exact", head: true })
+    .eq("type", "normal")
+    .eq("status", "free")
+    .eq("reserved", false)
+    .eq("is_used", false);
+
+  if (!count || count === 0) {
+    console.log("❌ No free codes");
+    return null;
+  }
+
+  const offset = Math.floor(Math.random() * count);
 
   const { data, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("type", "normal")
     .eq("status", "free")
-    .eq("is_used", false)
     .eq("reserved", false)
-    .order("random()")
-    .limit(1);
+    .eq("is_used", false)
+    .range(offset, offset);
 
   if (error || !data || data.length === 0) {
-    console.log("❌ No free codes");
     return null;
   }
 
   const gift = data[0];
 
-  const { error: updError } = await supabase
+  await supabase
     .from("gifts")
     .update({
       reserved: true,
@@ -270,12 +281,6 @@ async function reserveCode(tgId) {
     .eq("id", gift.id)
     .eq("status", "free");
 
-  if (updError) {
-    console.error("❌ Reserve failed:", updError);
-    return null;
-  }
-
-  console.log("✅ Reserved:", gift.code);
   return gift;
 }
 //==================create payment=============
