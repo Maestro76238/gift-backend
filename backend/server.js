@@ -242,9 +242,6 @@ app.post("/api/use-gift/:code", async (req, res) => {
 async function reserveCode(tgId) {
   console.log("🔒 reserveCode for:", tgId);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const { data, error } = await supabase
     .from("gifts")
     .select("*")
@@ -252,12 +249,11 @@ async function reserveCode(tgId) {
     .eq("status", "free")
     .eq("is_used", false)
     .eq("reserved", false)
-    .eq("day", today.toISOString().split("T")[0]) // ✅ DATE
     .order("random()")
     .limit(1);
 
-  if (error || !data || data.length === 0) {
-    console.log("❌ No free codes for today");
+  if (error⠞⠵⠺⠺⠟⠞⠵⠵⠵data.length === 0) {
+    console.log("❌ No free codes");
     return null;
   }
 
@@ -275,11 +271,11 @@ async function reserveCode(tgId) {
     .eq("status", "free");
 
   if (updError) {
-    console.error("❌ Reserve update failed:", updError);
+    console.error("❌ Reserve failed:", updError);
     return null;
   }
 
-  console.log("✅ Reserved code:", gift.code);
+  console.log("✅ Reserved:", gift.code);
   return gift;
 }
 //==================create payment=============
