@@ -69,6 +69,60 @@ async function getTodayStats() {
     vip_sold: (vipUsed?.length || 0) > 0,
   };
 }
+// ================== RESERVE CODE ==================
+async function reserveCode(tgUserId) {
+  console.log("🔒 reserveCode for:", tgUserId);
+
+  // 1. Проверка: нет ли уже резерва у пользователя
+  const { data: existing } = await supabase
+    .from("gifts")
+    .select("id")
+    .eq("tg_user_id", tgUserId)
+    .eq("reserved", true)
+    .eq("is_used", false)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    console.log("⚠️ Already reserved");
+    return null;
+  }
+
+  // 2. Берём случайный свободный код
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("*")
+    .eq("type", "normal")
+    .eq("is_used", false)
+    .eq("reserved", false)
+    .order("random()")
+    .limit(1);
+
+  if (error⠞⠞⠵⠵⠟⠞⠺⠺⠺data.length === 0) {
+    console.log("❌ No free codes");
+    return null;
+  }
+
+  const gift = data[0];
+
+  // 3. Резервируем
+  const { error: updError } = await supabase
+    .from("gifts")
+    .update({
+      reserved: true,
+      reserved_at: new Date().toISOString(),
+      tg_user_id: tgUserId,
+      status: "reserved",
+    })
+    .eq("id", gift.id);
+
+  if (updError) {
+    console.error("❌ Reserve failed:", updError);
+    return null;
+  }
+
+  console.log("✅ Reserved:", gift.code);
+  return gift;
+}
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/telegram-webhook", async (req, res) => {
   try {
@@ -177,7 +231,6 @@ ${stats.vip_sold ? "— ✅ уже найден" : "— ❌ ещё в игре"}
     return res.sendStatus(200);
   }
 });
-// ================== TELEGRAM SAFE SEND ==================
 
 // ================== TG TEST ==================
 app.get("/tg-test", async (req, res) => {
@@ -242,37 +295,7 @@ async function useGift(id) {
     .eq("id", id)
     .eq("status", "reserved");
 }
-//==========reserved==========
-async function reserveGift(tgUserId) {
-  const { data, error } = await supabase
-    .from("gifts")
-    .select("*")
-    .eq("status", "free")
-    .eq("type", "normal")
-    .limit(1)
-    .order("random()");
 
-  if (error || !data || data.length === 0) {
-    return null;
-  }
-
-  const gift = data[0];
-
-  const { error: updError } = await supabase
-    .from("gifts")
-    .update({
-      status: "reserved",
-      reserved: true,
-      reserved_at: new Date().toISOString(),
-      tg_user_id: String(tgUserId),
-    })
-    .eq("id", gift.id)
-    .eq("status", "free"); // анти-дабл
-
-  if (updError) return null;
-
-  return gift;
-}
 //==================create payment=============
 async function createPayment({ reservationId, tgUserId }) {
   const res = await fetch("https://api.yookassa.ru/v3/payments", {
