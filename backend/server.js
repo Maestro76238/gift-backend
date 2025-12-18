@@ -81,7 +81,7 @@ app.post("/telegram-webhook", async (req, res) => {
       const text = update.message.text;
 
       if (text === "/start") {
-        await sendTG(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
+        await sendMessage(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
           reply_markup: {
             inline_keyboard: [
               [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
@@ -110,7 +110,7 @@ app.post("/telegram-webhook", async (req, res) => {
       );
 
       if (data === "INSTRUCTION") {
-        await sendTG(
+        await sendMessage(
           tgId,
           "📖 Инструкция:\n\n1️⃣ Купить ключ\n2️⃣ Оплатить\n3️⃣ Получить код\n4⃣ Ввести код на сайте"
         );
@@ -120,14 +120,14 @@ app.post("/telegram-webhook", async (req, res) => {
         const reservation = await reserveCode(tgId);
 
         if (!reservation) {
-          await sendTG(tgId, "❌ Коды на сегодня закончились");
+          await sendMessage(tgId, "❌ Коды на сегодня закончились");
         } else {
           const payment = await createYooPayment({
             reservation_id: reservation.id,
             tg_user_id: tgId,
           });
 
-          await sendTG(tgId, "💳 Оплатите 👇", {
+          await sendMessage(tgId, "💳 Оплатите 👇", {
             reply_markup: {
               inline_keyboard: [
                 [
@@ -151,7 +151,7 @@ app.post("/telegram-webhook", async (req, res) => {
       if (data.startsWith("CANCEL_PAYMENT:")) {
         const reservationId = data.split(":")[1];
         await cancelReservation(reservationId);
-        await sendTG(tgId, "❌ Платёж отменён");
+        await sendMessage(tgId, "❌ Платёж отменён");
       }
 
       if (data === "STATS") {
@@ -167,7 +167,7 @@ app.post("/telegram-webhook", async (req, res) => {
 ${stats.vip_sold ? "— ✅ уже найден" : "— ❌ ещё в игре"}
         `;
 
-        await sendTG(tgId, text, { parse_mode: "HTML" });
+        await sendMessage(tgId, text, { parse_mode: "HTML" });
       }
     }
 
