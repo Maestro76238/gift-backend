@@ -252,7 +252,7 @@ async function reserveCode(tgId) {
     .order("random()")
     .limit(1);
 
-  if (error⠞⠵⠺⠺⠟⠞⠵⠵⠵data.length === 0) {
+  if (error || !data || data.length === 0) {
     console.log("❌ No free codes");
     return null;
   }
