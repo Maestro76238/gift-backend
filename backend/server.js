@@ -325,6 +325,15 @@ app.post("/yookassa-webhook", async (req, res) => {
           payment_id: null,
         })
         .eq("id", giftId);
+      await sendTG(
+        process.env.ADMIN_TG_ID,
+         `💳 <b>Оплата прошла</b>\n\n` +
+         `👤 TG ID: ${tgUserId}\n` +
+         `💰 Сумма: ${amount} RUB\n` +
+         `🎁 Тип: ${type}\n` +
+         `🆔 Payment ID: ${paymentId}`
+      );
+    
     }
 
     res.sendStatus(200);
@@ -397,6 +406,13 @@ app.post("/api/use-gift", async (req, res) => {
     .eq("is_used", false)
     .select()
     .limit(1);
+   await sendTG(
+        process.env.ADMIN_TG_ID,
+         `🎁 <b>Код выдан</b>\n\n +
+         `👤 TG ID: ${tgUserId}\n +
+         `🔑 Код: <code>${gift.code}</code>\n +
+         `📦 Тип: ${gift.type}
+   );
 
   if (error || !data || data.length === 0) {
     return res.status(400).json({
@@ -407,6 +423,36 @@ app.post("/api/use-gift", async (req, res) => {
   return res.json({
     ok: true,
     gift: data[0],
+  });
+});
+//=========stats=================
+app.get("/api/stats", async (req, res) => {
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("id, type, is_used");
+
+  if (error) {
+    return res.status(500).json({ ok: false });
+  }
+
+  const normalTotal = data.filter(g => g.type === "normal").length;
+  const normalUsed = data.filter(g => g.type === "normal" && g.is_used).length;
+
+  const vipTotal = data.filter(g => g.type === "vip").length;
+  const vipUsed = data.filter(g => g.type === "vip" && g.is_used).length;
+
+  return res.json({
+    ok: true,
+    normal: {
+      total: normalTotal,
+      used: normalUsed,
+      left: normalTotal - normalUsed,
+    },
+    vip: {
+      total: vipTotal,
+      used: vipUsed,
+      left: vipTotal - vipUsed,
+    },
   });
 });
 // ================= START =================
