@@ -303,7 +303,7 @@ app.post("/api/check-gift", async (req, res) => {
     .from("gifts")
     .select("code, status, is_used, file_url, type")
     .eq("code", code)
-    .eq("status", "paid")
+    .not("status", "eq", "used")
     .eq("is_used", false)
     .single();
 
