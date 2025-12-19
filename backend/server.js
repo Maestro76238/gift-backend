@@ -301,19 +301,22 @@ app.post("/api/check-gift", async (req, res) => {
 
   const { data, error } = await supabase
     .from("gifts")
-    .select("*")
+    .select("code, status, is_used, file_url, type")
     .eq("code", code)
     .eq("status", "paid")
     .eq("is_used", false)
-    .limit(1);
+    .single();
 
-  if (error || !data || data.length === 0) {
+  if (error || !data) {
     return res.status(400).json({
       error: "Неверный или уже использованный код",
     });
   }
 
-  return res.json({ ok: true });
+  return res.json({
+    ok: true,
+    gift: data,
+  });
 });
 // ----- USE SITE -----
 app.post("/api/use-gift", async (req, res) => {
@@ -329,16 +332,20 @@ app.post("/api/use-gift", async (req, res) => {
     .eq("code", code)
     .eq("status", "paid")
     .eq("is_used", false)
-    .select();
+    .select()
+    .single();
 
-  if (error || !data || data.length === 0) {
+  if (error || !data) {
     return res.status(400).json({
       error: "Код уже использован или недействителен",
     });
   }
 
-  return res.json({ ok: true });
-})
+  return res.json({
+    ok: true,
+    gift: data,
+  });
+});
 
 // ================= START =================
 app.listen(10000, () => {
