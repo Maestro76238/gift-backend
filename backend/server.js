@@ -163,9 +163,9 @@ app.post("/telegram-webhook", async (req, res) => {
 
         await sendMessage(tgId, "💳 Оплатите 👇", {
           reply_markup: {
-            inline_keyboard: [[
+            inline_keyboard:[
               { text: "Оплатить", url: payment.confirmation.confirmation_url,
-            ]]
+            ]
           }
         });
       }
