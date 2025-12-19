@@ -23,6 +23,7 @@ const supabase = createClient(
 );
 
 console.log("✅ SUPABASE CONNECTED");
+const userState ={};
 
 // ================= TELEGRAM =================
 async function sendTG(chatId, text, options = {}) {
