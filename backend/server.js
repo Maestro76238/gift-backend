@@ -256,6 +256,8 @@ app.post("/yookassa-webhook", async (req, res) => {
         .from("gifts")
         .update({
           status: "paid",
+          reserved: false,
+          reserved_at: null
         })
         .eq("id", giftId)
         .eq("status", "waiting_payment")
@@ -301,6 +303,7 @@ app.get("/api/check-gift/:code", async (req, res) => {
     .from("gifts")
     .select("code, file_url, status")
     .eq("code", code)
+    .eq("is_used", false)
     .eq("status", "paid")
     .single();
 
@@ -326,6 +329,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
     })
     .eq("code", code)
     .eq("status", "paid")
+    .eq("is_used", false)
     .select()
     .single();
 
