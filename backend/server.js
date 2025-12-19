@@ -413,62 +413,50 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
         return res.sendStatus(200);
       }
 
-// ===== ПОКУПКА =====
-if (update.callback_query) {
-  const tgId = update.callback_query.from.id;
-  const chatId = tgId;
-  const data = update.callback_query.data;
+      // ===== ПОКУПКА =====
+      if (
+        process.env.MAINTENANCE_MODE === "true" &&
+        update?.callback_query?.data === "BUY_KEY"
+      ) { 
+        await sendTG(chatId, "Покупки временно недоступны, выгружаем новые коды, ожидайте...");
+        return res.sendStatus(200);
+      } 
+      if (data === "BUY_KEY") {
+        const gift = await reserveGift(tgId);
 
-  // 🔧 ТЕХРАБОТЫ — блокируем покупку
-  if (
-    process.env.MAINTENANCE_MODE === "true" &&
-    data === "BUY_KEY"
-  ) {
-    await sendTG(
-      chatId,
-      "🛠 Покупки временно недоступны.\n\nВыгружаем новые коды, попробуйте позже ⏳"
-    );
-    return res.sendStatus(200);
-  }
+        if (!gift) {
+          await sendTG(tgId, "❌ Коды закончились");
+          return res.sendStatus(200);
+        }
 
-  // 🛒 ПОКУПКА
-  if (data === "BUY_KEY") {
-    const gift = await reserveGift(tgId);
+        const payment = await createPayment(gift.id, tgId);
 
-    if (!gift) {
-      await sendTG(tgId, "❌ Коды закончились");
-      return res.sendStatus(200);
-    }
-
-    const payment = await createPayment(gift.id, tgId);
-
-    await sendTG(
-      tgId,
-      "💳 Оплатите ключ и получите шанс открыть VIP-подарок 👇",
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "💳 Оплатить 100 ₽",
-                url: payment.confirmation.confirmation_url,
-              },
-            ],
-            [
-              {
-                text: "❌ Отмена",
-                callback_data: `CANCEL:${gift.id}`,
-              },
-            ],
-          ],
-        },
-      }
-    );
-
-    return res.sendStatus(200);
-  }
-}
-
+        await sendTG(
+          tgId,
+          "💳 Оплатите ключ и получите свой шанс 👇",
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "Оплатить 100 ₽",
+                    url: payment.confirmation.confirmation_url,
+                  },
+                ],
+                [
+                  {
+                    text: "❌ Отмена",
+                    callback_data: `CANCEL:${gift.id}`,
+                  },
+                  {
+                    text: "⬅️ Назад",
+                    callback_data: "BACK"
+                  },
+                ],
+              ],
+            },
+          }
+        );
       }
 
       // ===== ОТМЕНА =====
