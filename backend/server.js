@@ -73,6 +73,53 @@ async function cancelReserve(giftId) {
     .eq("status", "reserved");
 }
 
+
+//=========create payment=============
+async function createPayment(giftId, tgUserId) {
+  const response = await fetch("https://api.yookassa.ru/v3/payments", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotence-Key": crypto.randomUUID(),
+      Authorization:
+        "Basic " +
+        Buffer.from(
+          process.env.YOOKASSA_SHOP_ID +
+            ":" +
+            process.env.YOOKASSA_SECRET_KEY
+        ).toString("base64"),
+    },
+    body: JSON.stringify({
+      amount: {
+        value: "100.00",
+        currency: "RUB",
+      },
+      capture: true,
+      confirmation: {
+        type: "redirect",
+        return_url: "https://t.me/gift_celler_bot",
+      },
+      description: "Секретный подарок",
+      metadata: {
+        gift_id: giftId,
+        tg_user_id: tgUserId,
+      },
+    }),
+  });
+
+  const payment = await response.json();
+
+  await supabase
+    .from("gifts")
+    .update({
+      payment_id: payment.id,
+      status: "waiting_payment",
+    })
+    .eq("id", giftId);
+
+  return payment;
+}
+
 // ---------- CONFIRM PAYMENT ----------
 async function confirmPayment({ giftId, paymentId }) {
   const { data, error } = await supabase
