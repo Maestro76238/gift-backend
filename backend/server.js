@@ -251,33 +251,39 @@ app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
 
+    // ===== /start =====
     if (update.message?.text === "/start") {
-      await sendTG(update.message.chat.id, 
-       `🎁 НОВОГОДНЯЯ ИГРА НА УДАЧУ
+      await sendTG(
+        update.message.chat.id,
+        `🎁 НОВОГОДНЯЯ ИГРА НА УДАЧУ
 
-       Каждый час мы выпускаем ограниченное количество кодов.
-       Среди них — 💎 VIP-билет на участие в розыгрыше
-       💰 100 000 ₽ 31 декабря.
+Каждый час мы выпускаем ограниченное количество кодов.
+Среди них — 💎 VIP-билет на участие в розыгрыше
+💰 100 000 ₽ 31 декабря.
 
-       🔑 Каждый код — уникален
-       🎯 Шанс есть у каждого
-       ⏳ Количество кодов ограничено
+🔑 Каждый код — уникален
+🎯 Шанс есть у каждого
+⏳ Количество кодов ограничено
 
-       Выберите действие 👇`,
-       {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
-            [{ text: `⏳ Статистика`, callback_data: "STATS" }],
-            [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
-          ],
-        },
-      });
+Выберите действие 👇`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+              [{ text: "⏳ Статистика", callback_data: "STATS" }],
+              [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
+            ],
+          },
+        }
+      );
     }
 
+    // ===== CALLBACK =====
     if (update.callback_query) {
       const tgId = update.callback_query.from.id;
+      const data = update.callback_query.data;
 
+      // обязательный ответ Telegram
       await fetch(
         `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
         {
@@ -289,7 +295,8 @@ app.post("/telegram-webhook", async (req, res) => {
         }
       );
 
-      if (update.callback_query.data === "BUY_KEY") {
+      // ===== BUY =====
+      if (data === "BUY_KEY") {
         const gift = await reserveGift(tgId);
 
         if (!gift) {
@@ -299,47 +306,57 @@ app.post("/telegram-webhook", async (req, res) => {
 
         const payment = await createPayment(gift.id, tgId);
 
-        await sendTG(tgId, "💳 Оплатите секретный ключ, который позволит вам открыть ваш подарок на нашем сайте. После оплаты, вы получите сам ключ а также кнопку для перехода на наш сайт!:", {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "Оплатить 100 RUB", url: payment.confirmation.confirmation_url }],
-              [
-                {
-                  text: "❌ Отмена",
-                  callback_data: `CANCEL:${gift.id}`,
-                },
+        await sendTG(
+          tgId,
+          "💳 Оплатите секретный ключ. После оплаты вы получите код и кнопку перехода на сайт:",
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "Оплатить 100 ₽",
+                    url: payment.confirmation.confirmation_url,
+                  },
+                ],
+                [
+                  {
+                    text: "❌ Отмена",
+                    callback_data: CANCEL:${gift.id},
+                  },
+                ],
               ],
-            ],
-          },
-        });
+            },
+          }
+        );
       }
 
-      if (update.callback_query.data.startsWith("CANCEL:")) {
-        const giftId = update.callback_query.data.split(":")[1];
+      // ===== CANCEL =====
+      if (data.startsWith("CANCEL:")) {
+        const giftId = data.split(":")[1];
         await cancelReserve(giftId);
         await sendTG(tgId, "❌ Оплата отменена");
       }
+
+      // ===== STATS =====
       if (data === "STATS") {
         const r = await fetch(process.env.BACKEND_URL + "/api/stats");
         const stats = await r.json();
 
-        const text = 
-      `⏳ <b>Статистика</b>
-      
-       🎁 Осталось кодов: <b>${stats.normal_left}</b>
+        const text = `⏳ <b>Статистика</b>
 
-       💎 VIP-код:
-      ${stats.vip_found ? "Нашел своего счастливчика" : "Еще в поисках хозяина"}`;
-        
+🎁 Осталось кодов: <b>${stats.normal_left}</b>
+
+💎 VIP-код:
+${stats.vip_found ? "✅ Уже найден" : "❌ Ещё в игре"}`;
+
         await sendTG(tgId, text, { parse_mode: "HTML" });
-        return;
+      }
     }
 
-
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (e) {
-    console.error(e);
-    res.sendStatus(200);
+    console.error("TG WEBHOOK ERROR:", e);
+    return res.sendStatus(200);
   }
 });
 
