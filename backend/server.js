@@ -40,7 +40,53 @@ async function sendTG(chatId, text, options = {}) {
   );
   return res.json();
 }
+async function deleteTG(chatId, messageId) {
+  if (!messageId) return;
 
+  try {
+    await fetch(
+      `https://api.telegram.org/bot${process.env.TG_TOKEN}/deleteMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+        }),
+      }
+    );
+  } catch (e) {
+    console.error("DELETE MESSAGE ERROR:", e);
+  }
+}
+
+async function showMainMenu(tgId) {
+  // удалить предыдущее сообщение
+  if (userState[tgId]?.lastMessageId) {
+    await deleteTG(tgId, userState[tgId].lastMessageId);
+  }
+
+  const msg = await sendTG(
+    tgId,
+    "👋 Добро пожаловать!\n\nВыберите действие:",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+          [{ text: "📝 Инструкция", callback_data: "INSTRUCTION" }],
+          [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
+          [{ text: "📊 Статистика", callback_data: "STATS" }],
+        ],
+      },
+    }
+  );
+
+  userState[tgId] = {
+    step: "MAIN_MENU",
+    lastMessageId: msg.message_id,
+  };
+}
+//=============================================================================================================================================
 //==========admins==============
 async function notifyAdmin(text) {
   console.log("📣 NOTIFY ADMIN:", text);
@@ -362,6 +408,10 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
           );
         }
       }
+      if (data === "BACK") {
+        await showMainMenu(tgId);
+        return res.sendStatus(200);
+      }
 
       // ===== ПОКУПКА =====
       if (data === "BUY_KEY") {
@@ -390,6 +440,10 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
                   {
                     text: "❌ Отмена",
                     callback_data: `CANCEL:${gift.id}`,
+                  },
+                  {
+                    text: "⬅️ Назад",
+                    callback_data: "BACK"
                   },
                 ],
               ],
