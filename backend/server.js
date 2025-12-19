@@ -268,6 +268,7 @@ app.post("/telegram-webhook", async (req, res) => {
         reply_markup: {
           inline_keyboard: [
             [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+            [{ text: `⏳ Статистика`, callback_data: "STATS" }],
             [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
           ],
         },
@@ -318,7 +319,22 @@ app.post("/telegram-webhook", async (req, res) => {
         await cancelReserve(giftId);
         await sendTG(tgId, "❌ Оплата отменена");
       }
+      if (data === "STATS") {
+        const r = await fetch(process.env.BACKEND_URL + "/api/stats");
+        const stats = await r.json();
+
+        const text = 
+      `⏳ <b>Статистика</b>
+      
+       🎁 Осталось кодов: <b>${stats.normal_left}</b>
+
+       💎 VIP-код:
+      ${stats.vip_found ? "Нашел своего счастливчика" : "Еще в поисках хозяина"}
+        
+        await sendTG(tgId, text, { parse_mode: "HTML" });
+        return;
     }
+
 
     res.sendStatus(200);
   } catch (e) {
@@ -360,7 +376,7 @@ app.post("/yookassa-webhook", async (req, res) => {
         tgUserId,
         `🎉 <b>Оплата прошла успешно!</b>\n\n` +
         `🔑 <b>Ваш код:</b> <code>${gift.code}</code>\n\n` +
-        `⬇️ Нажмите кнопку ниже, чтобы проверить его на сайте`,
+        `⬇️ Нажмите кнопку ниже, чтобы проверить его на сайте, возможно вы приобрели VIP-код!`,
         {
           parse_mode: "HTML",
           reply_markup: {
