@@ -303,7 +303,7 @@ app.post("/telegram-webhook", async (req, res) => {
           console.log("📊 STATS pressed by", tgId);
 
           const r = await fetch(
-            ${process.env.BACKEND_URL}/api/stats
+            `${process.env.BACKEND_URL}/api/stats`
           );
 
           if (!r.ok) {
