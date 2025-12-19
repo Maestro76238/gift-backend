@@ -355,7 +355,13 @@ app.get("/api/check-gift/:code", async (req, res) => {
       .select("id, code, file_url, is_used, type")
       .eq("code", code)
       .maybeSingle();
-
+   await sendTG(
+     process.env.ADMIN_TG_ID,
+      `🎁 <b>Код выдан</b>\n\n` +
+      `👤 TG ID: ${tgUserId}\n` +
+      `🔑 Код: <code>${gift.code}</code>\n` +
+      `📦 Тип: ${gift.type}`
+   );
     if (error) {
       console.error("❌ SUPABASE ERROR:", error);
       return res.status(500).json({ ok: false });
@@ -406,13 +412,12 @@ app.post("/api/use-gift", async (req, res) => {
     .eq("is_used", false)
     .select()
     .limit(1);
-   await sendTG(
-        process.env.ADMIN_TG_ID,
-         `🎁 <b>Код выдан</b>\n\n +
-         `👤 TG ID: ${tgUserId}\n +
-         `🔑 Код: <code>${gift.code}</code>\n +
-         `📦 Тип: ${gift.type}
-   );
+  await sendTG(
+    process.env.ADMIN_TG_ID,
+     `✅ <b>Код использован</b>\n\n` +
+     `🔑 Код: <code>${code}</code>\n` +
+     `🕒 ${new Date().toLocaleString()}`
+  );
 
   if (error || !data || data.length === 0) {
     return res.status(400).json({
