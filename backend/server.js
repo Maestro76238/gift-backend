@@ -328,28 +328,31 @@ async function createPayment({ giftId, tgUserId }) {
 }
 
 // ================== CONFIRM RESERVATION ==================
-async function confirmReserved(reservationId, paymentId) {
-  const { data, error } = await supabase
+async function confirmReservation(reservationId) {
+  // 1. Получаем подарок из БД
+  const { data: gift, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("id", reservationId)
-    .eq("status", "reserved")
     .single();
 
-  if (error || !data) return null;
+  if (error || !gift) {
+    console.error("❌ confirmReservation: gift not found");
+    return null;
+  }
 
+  // 2. Обновляем статус
   await supabase
     .from("gifts")
     .update({
-      status: "used",
-      is_used: true,
-      used_at: new Date().toISOString(),
-      payment_id: paymentId,
       reserved: false,
+      is_used: true,
+      status: "used",
+      used_at: new Date().toISOString(),
     })
-    .eq("id", reservationId);
+    .eq("id", gift.id);
 
-  return data;
+  return gift;
 }
 //===========canel reserved===========
 
