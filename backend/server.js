@@ -213,7 +213,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
    await notifyAdmin(
      `🎁 <b>Код использован</b>\n\n` +
      `🔑 Код: ${code}\n` +
-     `👤 TG ID: ${gift.tg_user_id || "—"}`
+     `👤 TG ID: ${gift.tgUserId || "—"}`
    );
 
   if (error) {
@@ -336,7 +336,7 @@ app.post("/yookassa-webhook", async (req, res) => {
       );
       await notifyAdmin(
         `💰 <b>Новая оплата</b>\n\n` +
-        `👤 TG ID: ${tg_user_id}\n` +
+        `👤 TG ID: ${tgUserId}\n` +
         `🔑 Код: ${gift.code}\n` +
         `📦 Тип: ${gift.type}\n` +
         `🆔 Payment ID: ${payment_id}`
