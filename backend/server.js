@@ -181,7 +181,7 @@ app.post("/telegram-webhook", async (req, res) => {
               [
                 {
                   text: "❌ Отменить",
-                  callback_data: CANCEL_PAYMENT:${gift.id},
+                  callback_data: `CANCEL_PAYMENT:${gift.id}`,
                 },
               ],
             ],
