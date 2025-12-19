@@ -177,43 +177,32 @@ app.get("/api/check-gift/:code", async (req, res) => {
 });
 
 // ===== USE GIFT (SITE) =====
-app.post("/api/use-gift", async (req, res) => {
-  let { code } = req.body;
-
-  if (!code) {
-    return res.status(400).json({ error: "Код не передан" });
-  }
-
-  code = code.trim().toUpperCase();
+app.post("/api/use-gift/:code", async (req, res) => {
+  const code = req.params.code.toUpperCase();
 
   const { data, error } = await supabase
     .from("gifts")
     .update({
       is_used: true,
       used_at: new Date().toISOString(),
-      status: "used",
     })
     .eq("code", code)
-    .eq("is_used", true)
+    .eq("is_used", false)
     .select()
-    .limit(1);
-  await sendTG(
-    process.env.ADMIN_TG_ID,
-     `✅ <b>Код использован</b>\n\n` +
-     `🔑 Код: <code>${code}</code>\n` +
-     `🕒 ${new Date().toLocaleString()}`
-  );
+    .maybeSingle();
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    return res.status(500).json({ ok: false });
+  }
+
+  if (!data) {
     return res.status(400).json({
-      error: "Код уже использован или недействителен",
+      ok: false,
+      message: "Код уже использован",
     });
   }
 
-  return res.json({
-    ok: true,
-    gift: data[0],
-  });
+  return res.json({ ok: true });
 });
 
 // ================= ROUTES =================
