@@ -414,13 +414,7 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
       }
 
       // ===== ПОКУПКА =====
-      if (
-        process.env.MAINTENANCE_MODE === "true" &&
-        update?.callback_query?.data === "BUY_KEY"
-      ) { 
-        await sendTG(chatId, "Покупки временно недоступны, выгружаем новые коды, ожидайте...");
-        return res.sendStatus(200);
-      } 
+     
       if (data === "BUY_KEY") {
         const gift = await reserveGift(tgId);
 
