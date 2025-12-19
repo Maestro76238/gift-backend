@@ -194,10 +194,10 @@ app.get("/api/check-gift/:code", async (req, res) => {
   try {
     await sendTG(
       process.env.ADMIN_TG_ID,
-      🔓 <b>Код активирован</b>\n\n +
-        🔑 Код: <code>${data.code}</code>\n +
-        🎁 Тип: <b>${data.type}</b>\n +
-        🕒 Время: ${new Date().toLocaleString("ru-RU")},
+      `🔓 <b>Код активирован</b>\n\n` +
+        `🔑 Код: <code>${data.code}</code>\n` +
+        `🎁 Тип: <b>${data.type}</b>\n +
+        `🕒 Время: ${new Date().toLocaleString("ru-RU")}`,
       { parse_mode: "HTML" }
     );
   } catch (e) {
