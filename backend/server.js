@@ -392,11 +392,11 @@ app.post("/yookassa-webhook", async (req, res) => {
         }
       );
       await notifyAdmin(
-        `💰 <b>Новая оплата</b>\n\n` +
-        `👤 TG ID: ${tgUserId}\n` +
-        `🔑 Код: ${gift.code}\n` +
-        `📦 Тип: ${gift.type}\n` +
-        `🆔 Payment ID: ${payment.id}`
+        "💰 <b>Новая оплата</b>\n\n" +
+        "👤 TG ID: ${tgUserId}\n" +
+        "🔑 Код: ${gift.code}\n" +
+        "📦 Тип: ${gift.type}\n" +
+        "🆔 Payment ID: ${payment.id}"
       );
     }
 
