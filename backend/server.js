@@ -74,7 +74,6 @@ async function showMainMenu(tgId) {
       reply_markup: {
         inline_keyboard: [
           [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
-          [{ text: "📝 Инструкция", callback_data: "INSTRUCTION" }],
           [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
           [{ text: "📊 Статистика", callback_data: "STATS" }],
         ],
