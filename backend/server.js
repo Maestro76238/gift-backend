@@ -210,6 +210,7 @@ app.post("/api/use-gift/:code", async (req, res) => {
     .eq("is_used", false)
     .select()
     .maybeSingle();
+
    await notifyAdmin(
      `🎁 <b>Код использован</b>\n\n` +
      `🔑 Код: ${code}\n` +
@@ -328,18 +329,33 @@ app.post("/yookassa-webhook", async (req, res) => {
         .single();
 
       if (!gift) return res.sendStatus(200);
+      
 
       await sendTG(
         tgUserId,
-        `🎉 Оплата прошла!\n\n🔑 Ваш код:\n\n<b>${gift.code}</b>`,
-        { parse_mode: "HTML" }
+        `🎉 <b>Оплата прошла успешно!</b>\n\n +
+        `🔑 <b>Ваш код:</b> <code>${gift.code}</code>\n\n +
+        `⬇️ Нажмите кнопку ниже, чтобы проверить его на сайте,
+        {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "🔍 Проверить код на сайте",
+                  url: "https://gift-frontend-poth.onrender.com", // ← ТВОЙ САЙТ
+                },
+              ],
+            ],
+          },
+        }
       );
       await notifyAdmin(
         `💰 <b>Новая оплата</b>\n\n` +
         `👤 TG ID: ${tgUserId}\n` +
         `🔑 Код: ${gift.code}\n` +
         `📦 Тип: ${gift.type}\n` +
-        `🆔 Payment ID: ${payment_id}`
+        `🆔 Payment ID: ${payment.id}`
       );
     }
 
