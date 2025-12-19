@@ -296,49 +296,49 @@ app.post("/yookassa-webhook", async (req, res) => {
   }
 });
 // ----- CHECK SITE -----
-app.get("/api/check-gift/:code", async (req, res) => {
-  const code = req.params.code.trim().toUpperCase();
+app.post("/api/check-gift", async (req, res) => {
+  const { code } = req.body;
 
   const { data, error } = await supabase
     .from("gifts")
-    .select("code, file_url, status")
+    .select("*")
     .eq("code", code)
-    .eq("is_used", false)
     .eq("status", "paid")
-    .single();
+    .eq("is_used", false)
+    .limit(1);
 
-  if (error || !data) {
-    return res.status(404).json({ error: "INVALID_CODE" });
+  if (error || !data || data.length === 0) {
+    return res.status(400).json({
+      error: "Неверный или уже использованный код",
+    });
   }
 
-  res.json({
-    gift_url: data.file_url,
-  });
+  return res.json({ ok: true });
 });
-
 // ----- USE SITE -----
-app.post("/api/use-gift/:code", async (req, res) => {
-  const code = req.params.code.trim().toUpperCase();
+app.post("/api/use-gift", async (req, res) => {
+  const { code } = req.body;
 
   const { data, error } = await supabase
     .from("gifts")
     .update({
-      status: "used",
       is_used: true,
       used_at: new Date().toISOString(),
+      status: "used",
     })
     .eq("code", code)
     .eq("status", "paid")
     .eq("is_used", false)
-    .select()
-    .single();
+    .select();
 
-  if (error || !data) {
-    return res.status(400).json({ error: "CANNOT_USE_CODE" });
+  if (error || !data || data.length === 0) {
+    return res.status(400).json({
+      error: "Код уже использован или недействителен",
+    });
   }
 
-  res.json({ success: true });
-});
+  return res.json({ ok: true });
+})
 
 // ================= START =================
 app.listen(10000, () => {
