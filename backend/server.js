@@ -295,15 +295,45 @@ app.post("/yookassa-webhook", async (req, res) => {
 });
 // ----- CHECK SITE -----
 app.get("/api/check-gift/:code", async (req, res) => {
-  const ok = await checkGift(req.params.code);
-  res.json({ valid: ok });
+  const code = req.params.code.trim().toUpperCase();
+
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("code, file_url, status")
+    .eq("code", code)
+    .eq("status", "paid")
+    .single();
+
+  if (error || !data) {
+    return res.status(404).json({ error: "INVALID_CODE" });
+  }
+
+  res.json({
+    gift_url: data.file_url,
+  });
 });
 
 // ----- USE SITE -----
 app.post("/api/use-gift/:code", async (req, res) => {
-  const gift = await useGift(req.params.code);
-  if (!gift) return res.status(400).json({ error: "INVALID" });
-  res.json(gift);
+  const code = req.params.code.trim().toUpperCase();
+
+  const { data, error } = await supabase
+    .from("gifts")
+    .update({
+      status: "used",
+      is_used: true,
+      used_at: new Date().toISOString(),
+    })
+    .eq("code", code)
+    .eq("status", "paid")
+    .select()
+    .single();
+
+  if (error || !data) {
+    return res.status(400).json({ error: "CANNOT_USE_CODE" });
+  }
+
+  res.json({ success: true });
 });
 
 // ================= START =================
