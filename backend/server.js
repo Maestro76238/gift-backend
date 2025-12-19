@@ -147,54 +147,33 @@ async function confirmPayment({ giftId, paymentId }) {
   return data;
 }
 
-// ===== CHECK GIFT (SITE) =====
-// ================== CHECK GIFT ==================
+// ---------- CHECK ----------
 app.get("/api/check-gift/:code", async (req, res) => {
-  try {
-    const code = req.params.code.trim().toUpperCase();
+  const code = req.params.code.toUpperCase();
 
-    console.log("🔍 CHECK GIFT:", code);
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("id, code, file_url, is_used, type")
+    .eq("code", code)
+    .eq("is_used", false)
+    .limit(1)
+    .maybeSingle();
 
-    const { data: gift, error } = await supabase
-      .from("gifts")
-      .select("id, code, file_url, is_used, type")
-      .eq("code", code)
-      .maybeSingle();
-   await sendTG(
-     process.env.ADMIN_TG_ID,
-      `🎁 <b>Код выдан</b>\n\n` +
-      `👤 TG ID: ${tgUserId}\n` +
-      `🔑 Код: <code>${gift.code}</code>\n` +
-      `📦 Тип: ${gift.type}`
-   );
-    if (error) {
-      console.error("❌ SUPABASE ERROR:", error);
-      return res.status(500).json({ ok: false });
-    }
-
-    // ❌ НЕТ ТАКОГО КОДА
-    if (!gift) {
-      console.log("❌ CODE NOT FOUND");
-      return res.status(404).json({ ok: false });
-    }
-
-    // ❌ УЖЕ ИСПОЛЬЗОВАН
-    if (gift.is_used) {
-      console.log("❌ CODE ALREADY USED");
-      return res.status(400).json({ ok: false });
-    }
-
-    // ✅ ВСЁ ОК
-    console.log("✅ CODE VALID:", gift.code);
-
-    return res.json({
-      ok: true,
-      gift,
-    });
-  } catch (e) {
-    console.error("🔥 CHECK GIFT ERROR:", e);
+  if (error) {
     return res.status(500).json({ ok: false });
   }
+
+  if (!data) {
+    return res.status(404).json({
+      ok: false,
+      message: "Код неверный или уже использованный",
+    });
+  }
+
+  return res.json({
+    ok: true,
+    gift: data,
+  });
 });
 
 // ===== USE GIFT (SITE) =====
