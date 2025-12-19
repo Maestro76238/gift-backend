@@ -195,7 +195,7 @@ app.post("/telegram-webhook", async (req, res) => {
         await cancelReserved(giftId);
         await sendTG(tgId, "❌ Платёж отменён. Код возвращён.");
       }
-    }
+
       if (data === "STATS") {
         const stats = await getTodayStats();
 
