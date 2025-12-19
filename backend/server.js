@@ -330,24 +330,22 @@ app.post("/api/use-gift/:code", async (req, res) => {
 app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
-    console.log("TG UPDATE:", JSON.stringify(update, null, 2));
 
-    // ===== MESSAGE =====
+    // ===== /start =====
     if (update.message?.text === "/start") {
       await sendTG(
         update.message.chat.id,
-        `🎁 <b>НОВОГОДНЯЯ ИГРА НА УДАЧУ</b>
+        `🎁 НОВОГОДНЯЯ ИГРА НА УДАЧУ
 
-Каждый код — шанс.
-Среди них есть 💎 VIP-билет на розыгрыш 💰 100 000 ₽
+Каждый код — шанс получить 💎 VIP-билет
+на участие в розыгрыше 💰 100 000 ₽
 
-🔑 Коды уникальны
+🔑 Код уникален
 ⏳ Количество ограничено
-🎯 Удача решает всё
+🎯 Победитель будет выбран 31 декабря
 
 Выберите действие 👇`,
         {
-          parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
               [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
@@ -357,64 +355,61 @@ app.post("/telegram-webhook", async (req, res) => {
           },
         }
       );
+
+      return res.sendStatus(200);
     }
 
     // ===== CALLBACK =====
     if (update.callback_query) {
-      const cb = update.callback_query;
-      const tgId = cb.from.id;
-      const data = cb.data;
+      const tgId = update.callback_query.from.id;
+      const chatId = tgId;
+      const data = update.callback_query.data;
 
-      console.log("➡️ CALLBACK:", data);
-
-      // ОБЯЗАТЕЛЬНЫЙ ответ Telegram
+      // убрать "часики" у кнопки
       await fetch(
         `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ callback_query_id: cb.id }),
+          body: JSON.stringify({
+            callback_query_id: update.callback_query.id,
+          }),
         }
       );
 
+      // ===== ТЕХРАБОТЫ =====
+      if (
+        process.env.MAINTENANCE_MODE === "true" &&
+        data === "BUY_KEY"
+      ) {
+        await sendTG(
+          chatId,
+          "🛠 Покупки временно недоступны.\n\nВыгружаем новые коды, ожидайте ⏳"
+        );
+        return res.sendStatus(200);
+      }
+
       // ===== СТАТИСТИКА =====
       if (data === "STATS") {
-        try {
-          console.log("📊 STATS pressed by", tgId);
+        const { data: stats } = await supabase
+          .from("gifts")
+          .select("id", { count: "exact", head: true })
+          .eq("is_used", false)
+          .eq("reserved", false)
+          .eq("type", "normal");
 
-          const r = await fetch(
-            `${process.env.BACKEND_URL}/api/stats`
-          );
+        const text = `📊 <b>Статистика</b>
 
-          if (!r.ok) {
-            throw new Error("Stats API error");
-          }
-
-          const stats = await r.json();
-
-          const text = `📊 <b>Статистика на сегодня</b>
-
-🎁 Осталось кодов: <b>${stats.normal_left}</b>
+🎁 Осталось кодов: <b>${stats?.count ?? 0}</b>
 
 💎 VIP-билет:
-${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}`;
+${stats?.count > 0 ? "🎯 Всё ещё в игре" : "❌ Уже найден"}`;
 
-          await sendTG(tgId, text, { parse_mode: "HTML" });
-        } catch (e) {
-          console.error("STATS ERROR:", e);
-          await sendTG(
-            tgId,
-            "⚠️ Статистика временно недоступна. Попробуйте позже."
-          );
-        }
-      }
-      if (data === "BACK") {
-        await showMainMenu(tgId);
+        await sendTG(chatId, text, { parse_mode: "HTML" });
         return res.sendStatus(200);
       }
 
       // ===== ПОКУПКА =====
-     
       if (data === "BUY_KEY") {
         const gift = await reserveGift(tgId);
 
@@ -433,7 +428,7 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
               inline_keyboard: [
                 [
                   {
-                    text: "Оплатить 100 ₽",
+                    text: "💳 Оплатить 100 ₽",
                     url: payment.confirmation.confirmation_url,
                   },
                 ],
@@ -444,13 +439,15 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
                   },
                   {
                     text: "⬅️ Назад",
-                    callback_data: "BACK"
+                    callback_data: "BACK",
                   },
                 ],
               ],
             },
           }
         );
+
+        return res.sendStatus(200);
       }
 
       // ===== ОТМЕНА =====
@@ -458,6 +455,25 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}
         const giftId = data.split(":")[1];
         await cancelReserve(giftId);
         await sendTG(tgId, "❌ Оплата отменена, код возвращён");
+        return res.sendStatus(200);
+      }
+
+      // ===== НАЗАД =====
+      if (data === "BACK") {
+        await sendTG(
+          chatId,
+          "👋 Выберите действие 👇",
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+                [{ text: "📊 Статистика", callback_data: "STATS" }],
+                [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
+              ],
+            },
+          }
+        );
+        return res.sendStatus(200);
       }
     }
 
