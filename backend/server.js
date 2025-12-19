@@ -296,33 +296,47 @@ app.post("/yookassa-webhook", async (req, res) => {
   }
 });
 // ===== CHECK GIFT (SITE) =====
-// ===== CHECK GIFT (SITE) =====
-app.post("/api/check-gift", async (req, res) => {
-  let { code } = req.body;
+// ================== CHECK GIFT ==================
+app.get("/api/check-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.trim().toUpperCase();
 
-  if (!code) {
-    return res.status(400).json({ error: "Код не передан" });
-  }
+    console.log("🔍 CHECK GIFT:", code);
 
-  code = code.trim().toUpperCase();
+    const { data: gift, error } = await supabase
+      .from("gifts")
+      .select("id, code, file_url, is_used, type")
+      .eq("code", code)
+      .maybeSingle();
 
-  const { data, error } = await supabase
-    .from("gifts")
-    .select("id, code, is_used, file_url, type")
-    .ilike("code", code)
-    .eq("is_used", false)
-    .limit(1);
+    if (error) {
+      console.error("❌ SUPABASE ERROR:", error);
+      return res.status(500).json({ ok: false });
+    }
 
-  if (error || !data || data.length === 0) {
-    return res.status(400).json({
-      error: "Неверный или уже использованный код",
+    // ❌ НЕТ ТАКОГО КОДА
+    if (!gift) {
+      console.log("❌ CODE NOT FOUND");
+      return res.status(404).json({ ok: false });
+    }
+
+    // ❌ УЖЕ ИСПОЛЬЗОВАН
+    if (gift.is_used) {
+      console.log("❌ CODE ALREADY USED");
+      return res.status(400).json({ ok: false });
+    }
+
+    // ✅ ВСЁ ОК
+    console.log("✅ CODE VALID:", gift.code);
+
+    return res.json({
+      ok: true,
+      gift,
     });
+  } catch (e) {
+    console.error("🔥 CHECK GIFT ERROR:", e);
+    return res.status(500).json({ ok: false });
   }
-
-  return res.json({
-    ok: true,
-    gift: data[0],
-  });
 });
 // ===== USE GIFT (SITE) =====
 app.post("/api/use-gift", async (req, res) => {
