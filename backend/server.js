@@ -82,29 +82,36 @@ async function reserveGift(tgUserId) {
 }
 
 // ================== CONFIRM RESERVATION ==================
-async function confirmReservation(reservationId) {
-  // 1. Получаем подарок из БД
+async function confirmReservation(reservationId, paymentId) {
+  // 1️⃣ получаем зарезервированный код
   const { data: gift, error } = await supabase
     .from("gifts")
     .select("*")
     .eq("id", reservationId)
+    .eq("reserved", true)
     .single();
 
   if (error || !gift) {
-    console.error("❌ confirmReservation: gift not found");
+    console.error("❌ confirmReservation: gift not found", error);
     return null;
   }
 
-  // 2. Обновляем статус
-  await supabase
+  // 2️⃣ подтверждаем код
+  const { error: updateError } = await supabase
     .from("gifts")
     .update({
       reserved: false,
-      is_used: true,
-      status: "used",
-      used_at: new Date().toISOString(),
+      is_used: false,
+      payment_id: paymentId,
+      status: "paid",
+      tg_user_id: gift.tg_user_id,
     })
     .eq("id", gift.id);
+
+  if (updateError) {
+    console.error("❌ confirmReservation update error", updateError);
+    return null;
+  }
 
   return gift;
 }
