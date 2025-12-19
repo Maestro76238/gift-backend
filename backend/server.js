@@ -41,6 +41,26 @@ async function sendTG(chatId, text, options = {}) {
   return res.json();
 }
 
+//==========admins==============
+async function notifyAdmin(text) {
+  console.log("📣 NOTIFY ADMIN:", text);
+
+  const res = await fetch(
+    `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: process.env.ADMIN_TG_ID,
+        text,
+        parse_mode: "HTML",
+      }),
+    }
+  );
+
+  const data = await res.json();
+  console.log("📨 ADMIN RESULT:", data);
+}
 // ================= BUSINESS LOGIC =================
 
 // ---------- RESERVE ----------
@@ -190,6 +210,11 @@ app.post("/api/use-gift/:code", async (req, res) => {
     .eq("is_used", false)
     .select()
     .maybeSingle();
+   await notifyAdmin(
+     `🎁 <b>Код использован</b>\n\n` +
+     `🔑 Код: ${code}\n` +
+     `👤 TG ID: ${gift.tg_user_id || "—"}`
+   );
 
   if (error) {
     return res.status(500).json({ ok: false });
@@ -309,6 +334,13 @@ app.post("/yookassa-webhook", async (req, res) => {
         `🎉 Оплата прошла!\n\n🔑 Ваш код:\n\n<b>${gift.code}</b>`,
         { parse_mode: "HTML" }
       );
+      await notifyAdmin(
+        `💰 <b>Новая оплата</b>\n\n` +
+        `👤 TG ID: ${tg_user_id}\n` +
+        `🔑 Код: ${gift.code}\n` +
+        `📦 Тип: ${gift.type}\n` +
+        `🆔 Payment ID: ${payment_id}`
+      );
     }
 
     if (event.event === "payment.canceled") {
@@ -325,14 +357,6 @@ app.post("/yookassa-webhook", async (req, res) => {
           payment_id: null,
         })
         .eq("id", giftId);
-      await sendTG(
-        process.env.ADMIN_TG_ID,
-         `💳 <b>Оплата прошла</b>\n\n` +
-         `👤 TG ID: ${tgUserId}\n` +
-         `💰 Сумма: ${amount} RUB\n` +
-         `🎁 Тип: ${type}\n` +
-         `🆔 Payment ID: ${paymentId}`
-      );
     
     }
 
