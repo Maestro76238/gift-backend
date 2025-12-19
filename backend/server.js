@@ -285,7 +285,7 @@ app.post("/telegram-webhook", async (req, res) => {
 
         const payment = await createPayment(gift.id, tgId);
 
-        await sendTG(tgId, "💳 Оплатите:", {
+        await sendTG(tgId, "💳 Оплатите секретный ключ, который позволит вам открыть ваш подарок на нашем сайте. После оплаты, вы получите сам ключ а также кнопку для перехода на наш сайт!:", {
           reply_markup: {
             inline_keyboard: [
               [{ text: "Оплатить 100 RUB", url: payment.confirmation.confirmation_url }],
