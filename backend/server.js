@@ -99,35 +99,55 @@ async function reserveGift(tgUserId) {
 app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
-    console.log("TG UPDATE:", JSON.stringify(update, null, 2));
 
-    // ================== MESSAGE ==================
+    // ===== MESSAGE =====
     if (update.message) {
       const chatId = update.message.chat.id;
       const text = update.message.text;
 
       if (text === "/start") {
-        await sendMessage(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
+        await sendTG(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
           reply_markup: {
             inline_keyboard: [
-              [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
-              [{ text: "📝 Инструкция", callback_data: "INSTRUCTION" }],
-              [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
-              [{ text: "📊 Статистика", callback_data: "STATS" }],
+              [
+                {
+                  text: "📖 FAQ",
+                  url: "https://telegra.ph/FAQ-12-16-21",
+                },
+              ],
+              [
+                {
+                  text: "📝 Инструкция",
+                  callback_data: "INSTRUCTION",
+                },
+              ],
+              [
+                {
+                  text: "🔑 Купить ключ",
+                  callback_data: "BUY_KEY",
+                },
+              ],
+              [
+                {
+                  text: "📊 Статистика",
+                  callback_data: "STATS",
+                },
+              ],
             ],
           },
         });
       }
     }
 
-    // ================== CALLBACK ==================
+    // ===== CALLBACK =====
     if (update.callback_query) {
       const cb = update.callback_query;
       const tgId = cb.from.id;
       const data = cb.data;
 
+      // ОБЯЗАТЕЛЬНО отвечаем Telegram
       await fetch(
-        `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
+        https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -135,41 +155,47 @@ app.post("/telegram-webhook", async (req, res) => {
         }
       );
 
-      if (data === "INSTRUCTION") {
-        await sendMessage(
-          tgId,
-          "📖 Инструкция:\n\n1️⃣ Купить ключ\n2️⃣ Оплатить\n3️⃣ Получить код\n4⃣ Ввести код на сайте"
-        );
-      }
-
+      // ===== BUY KEY =====
       if (data === "BUY_KEY") {
         const gift = await reserveGift(tgId);
 
         if (!gift) {
-          await sendMessage(tgId, "❌ Коды на сегодня закончились");
-          return;
+          await sendTG(tgId, "❌ Коды временно закончились");
+          return res.sendStatus(200);
         }
+
         const payment = await createPayment({
-          gift_id: gift.id,
-          tg_user_id: tgId,
+          giftId: gift.id,
+          tgUserId: tgId,
         });
-        await supabase
-          .from("gifts")
-          .update({
-            payment_id: payment.id,
-          })
-          .eq("id", gift.id);
 
-
-        await sendMessage(tgId, "💳 Оплатите 👇", {
+        await sendTG(tgId, "💳 Оплатите подарок 👇", {
           reply_markup: {
-            inline_keyboard:[
-              { text: "Оплатить", url: payment.confirmation.confirmation_url,
-            ]
-          }
+            inline_keyboard: [
+              [
+                {
+                  text: "Оплатить",
+                  url: payment.confirmation.confirmation_url,
+                },
+              ],
+              [
+                {
+                  text: "❌ Отменить",
+                  callback_data: CANCEL_PAYMENT:${gift.id},
+                },
+              ],
+            ],
+          },
         });
       }
 
+      // ===== CANCEL =====
+      if (data.startsWith("CANCEL_PAYMENT:")) {
+        const giftId = data.split(":")[1];
+        await cancelReserved(giftId);
+        await sendTG(tgId, "❌ Платёж отменён. Код возвращён.");
+      }
+    }
       if (data === "STATS") {
         const stats = await getTodayStats();
 
