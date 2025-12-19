@@ -209,6 +209,40 @@ app.get("/api/check-gift/:code", async (req, res) => {
     gift: data,
   });
 });
+//=======STATS=============
+app.get("/api/stats", async (req, res) => {
+  try {
+    // обычные коды
+    const { count: normal_left } = await supabase
+      .from("gifts")
+      .select("*", { count: "exact", head: true })
+      .eq("type", "normal")
+      .eq("status", "free");
+
+    // всего обычных
+    const { count: normal_total } = await supabase
+      .from("gifts")
+      .select("*", { count: "exact", head: true })
+      .eq("type", "normal");
+
+    // VIP — найден или нет
+    const { data: vip_used } = await supabase
+      .from("gifts")
+      .select("id")
+      .eq("type", "vip")
+      .eq("status", "used")
+      .limit(1);
+
+    return res.json({
+      normal_left,
+      normal_total,
+      vip_found: vip_used.length > 0,
+    });
+  } catch (e) {
+    console.error("STATS API ERROR:", e);
+    return res.status(500).json({ error: true });
+  }
+});
 // ===== USE GIFT (SITE) =====
 app.post("/api/use-gift/:code", async (req, res) => {
   const code = req.params.code.toUpperCase();
@@ -460,36 +494,6 @@ app.post("/yookassa-webhook", async (req, res) => {
 });
 
 
-//=========stats=================
-app.get("/api/stats", async (req, res) => {
-  const { data, error } = await supabase
-    .from("gifts")
-    .select("id, type, is_used");
-
-  if (error) {
-    return res.status(500).json({ ok: false });
-  }
-
-  const normalTotal = data.filter(g => g.type === "normal").length;
-  const normalUsed = data.filter(g => g.type === "normal" && g.is_used).length;
-
-  const vipTotal = data.filter(g => g.type === "vip").length;
-  const vipUsed = data.filter(g => g.type === "vip" && g.is_used).length;
-
-  return res.json({
-    ok: true,
-    normal: {
-      total: normalTotal,
-      used: normalUsed,
-      left: normalTotal - normalUsed,
-    },
-    vip: {
-      total: vipTotal,
-      used: vipUsed,
-      left: vipTotal - vipUsed,
-    },
-  });
-});
 // ================= START =================
 app.listen(10000, () => {
   console.log("🚀 Server running on 10000");
