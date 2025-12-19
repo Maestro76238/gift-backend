@@ -194,7 +194,7 @@ app.post("/api/use-gift", async (req, res) => {
       status: "used",
     })
     .eq("code", code)
-    .eq("is_used", false)
+    .eq("is_used", true)
     .select()
     .limit(1);
   await sendTG(
