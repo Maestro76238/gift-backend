@@ -238,6 +238,61 @@ app.post("/telegram-webhook", async (req, res) => {
   }
 });
 
+
+
+// ===========YOOKASSA==========
+app.post("/yookassa-webhook", async (req, res) => {
+  try {
+    const event = req.body;
+
+    console.log("💳 YOOKASSA EVENT:", event.event);
+
+    if (event.event === "payment.succeeded") {
+      const payment = event.object;
+      const giftId = payment.metadata.gift_id;
+      const tgUserId = payment.metadata.tg_user_id;
+
+      const { data: gift } = await supabase
+        .from("gifts")
+        .update({
+          status: "paid",
+        })
+        .eq("id", giftId)
+        .eq("status", "waiting_payment")
+        .select("*")
+        .single();
+
+      if (!gift) return res.sendStatus(200);
+
+      await sendTG(
+        tgUserId,
+        `🎉 Оплата прошла!\n\n🔑 Ваш код:\n\n<b>${gift.code}</b>`,
+        { parse_mode: "HTML" }
+      );
+    }
+
+    if (event.event === "payment.canceled") {
+      const payment = event.object;
+      const giftId = payment.metadata.gift_id;
+
+      await supabase
+        .from("gifts")
+        .update({
+          status: "free",
+          reserved: false,
+          reserved_at: null,
+          tg_user_id: null,
+          payment_id: null,
+        })
+        .eq("id", giftId);
+    }
+
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("🔥 YOOKASSA ERROR:", e);
+    res.sendStatus(200);
+  }
+});
 // ----- CHECK SITE -----
 app.get("/api/check-gift/:code", async (req, res) => {
   const ok = await checkGift(req.params.code);
