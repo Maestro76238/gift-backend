@@ -1,49 +1,23 @@
 import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
-import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import YooCheckout from "@a2seven/yoo-checkout";
 
-const TG_TOKEN = process.env.TG_TOKEN;
-const ADMIN_TG_ID = process.env.ADMIN_TG_ID;
-console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
-console.log("SUPABASE_SERVICE_KEY =", process.env.SUPABASE_SERVICE_KEY ? "OK" : "MISSING");
-
-// ================== INIT APP ==================
 const app = express();
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST","OPTIONS"],
-    allowedHeaders: ["Content-Type","Authorization"],
-  })
-);
-app.options("*", cors());
 app.use(express.json());
 
+// ================= SUPABASE =================
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-// ================= SUPABASE INIT =================
-let supabase = null;
+console.log("✅ SUPABASE CONNECTED");
 
-try {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-    console.error("❌ SUPABASE ENV NOT SET");
-  } else {
-    supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY
-    );
-    console.log("✅ SUPABASE CONNECTED");
-  }
-} catch (e) {
-  console.error("❌ SUPABASE INIT ERROR:", e);
-}
-
-//======send messege====
-async function sendMessage(chatId, text, options = {}) {
-  await fetch(
-    `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
+// ================= TELEGRAM =================
+async function sendTG(chatId, text, options = {}) {
+  const res = await fetch(
+    https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -54,19 +28,22 @@ async function sendMessage(chatId, text, options = {}) {
       }),
     }
   );
+  return res.json();
 }
-// ================== RESERVE CODE ==================
+
+// ================= BUSINESS LOGIC =================
+
+// ---------- RESERVE ----------
 async function reserveGift(tgUserId) {
-  const { data: gift } = await supabase
+  const { data: gift, error } = await supabase
     .from("gifts")
     .select("*")
-    .eq("type", "normal")
     .eq("status", "free")
-    .eq("reserved", false)
+    .eq("type", "normal")
     .limit(1)
     .single();
 
-  if (!gift) return null;
+  if (error || !gift) return null;
 
   await supabase
     .from("gifts")
@@ -81,44 +58,8 @@ async function reserveGift(tgUserId) {
   return gift;
 }
 
-// ================== CONFIRM RESERVATION ==================
-async function confirmReservation(reservationId, paymentId) {
-  // 1️⃣ получаем зарезервированный код
-  const { data: gift, error } = await supabase
-    .from("gifts")
-    .select("*")
-    .eq("id", reservationId)
-    .eq("reserved", true)
-    .single();
-
-  if (error || !gift) {
-    console.error("❌ confirmReservation: gift not found", error);
-    return null;
-  }
-
-  // 2️⃣ подтверждаем код
-  const { error: updateError } = await supabase
-    .from("gifts")
-    .update({
-      reserved: false,
-      is_used: false,
-      payment_id: paymentId,
-      status: "paid",
-      tg_user_id: gift.tg_user_id,
-    })
-    .eq("id", gift.id);
-
-  if (updateError) {
-    console.error("❌ confirmReservation update error", updateError);
-    return null;
-  }
-
-  return gift;
-}
-
-//===========canel reserved===========
-
-async function cancelReserved(giftId) {
+// ---------- CANCEL ----------
+async function cancelReserve(giftId) {
   await supabase
     .from("gifts")
     .update({
@@ -132,72 +73,24 @@ async function cancelReserved(giftId) {
     .eq("status", "reserved");
 }
 
-
-//==================create payment=============
-async function createPayment({ giftId, tgUserId }) {
-  const res = await fetch("https://api.yookassa.ru/v3/payments", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotence-Key": crypto.randomUUID(),
-      Authorization:
-        "Basic " +
-        Buffer.from(
-          process.env.YOOKASSA_SHOP_ID + ":" + process.env.YOOKASSA_SECRET_KEY
-        ).toString("base64"),
-    },
-    body: JSON.stringify({
-      amount: { value: "100.00", currency: "RUB" },
-      capture: true,
-      confirmation: {
-        type: "redirect",
-        return_url: "https://example.com/success",
-      },
-      description: "Подарочный код",
-      metadata: {
-        gift_id: giftId,
-        tg_user_id: tgUserId,
-      },
-    }),
-  });
-
-  return await res.json();
-}
-
-
-//===========cancel payment===========
-await supabase
-  .from("gifts")
-  .update({
-    status: "free",
-    reserved: false,
-    reserved_at: null,
-    tg_user_id: null,
-    payment_id: null,
-  })
-  .eq("id", gift.id);
-
-
-// ================== GET GIFT ==================
-async function getGift(code) {
+// ---------- CONFIRM PAYMENT ----------
+async function confirmPayment({ giftId, paymentId }) {
   const { data, error } = await supabase
     .from("gifts")
-    .select("file_url, status")
-    .eq("code", code)
+    .update({
+      status: "paid",
+      payment_id: paymentId,
+    })
+    .eq("id", giftId)
+    .eq("status", "reserved")
+    .select("*")
     .single();
 
-  if (error || !data) {
-    return { error: "INVALID_CODE" };
-  }
-
-  if (data.status !== "used") {
-    return { error: "NOT_ACTIVATED" };
-  }
-
-  return { success: true, file_url: data.file_url };
+  if (error || !data) return null;
+  return data;
 }
 
-//====================check gift=================
+// ---------- CHECK ----------
 async function checkGift(code) {
   const { data } = await supabase
     .from("gifts")
@@ -205,14 +98,11 @@ async function checkGift(code) {
     .eq("code", code)
     .single();
 
-  if (!data) return { valid: false };
-
-  if (data.status === "paid") return { valid: true };
-
-  return { valid: false };
+  if (!data) return false;
+  return data.status === "paid";
 }
 
-// ================== USE GIFT ==================
+// ---------- USE ----------
 async function useGift(code) {
   const { data, error } = await supabase
     .from("gifts")
@@ -220,106 +110,66 @@ async function useGift(code) {
       status: "used",
       is_used: true,
       used_at: new Date().toISOString(),
-      reserved: false,
     })
     .eq("code", code)
     .eq("status", "paid")
     .select("file_url")
     .single();
 
-  if (error || !data) {
-    return { error: "INVALID_OR_USED" };
-  }
-
-  return { success: true, file_url: data.file_url };
+  if (error || !data) return null;
+  return data;
 }
-// ================== TELEGRAM WEBHOOK ==================
+
+// ================= ROUTES =================
+
+// ----- TELEGRAM -----
 app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
 
-    // ===== MESSAGE =====
-    if (update.message) {
-      const chatId = update.message.chat.id;
-      const text = update.message.text;
-
-      if (text === "/start") {
-        await sendTG(chatId, "👋 Добро пожаловать!\n\nВыберите действие:", {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "📖 FAQ",
-                  url: "https://telegra.ph/FAQ-12-16-21",
-                },
-              ],
-              [
-                {
-                  text: "📝 Инструкция",
-                  callback_data: "INSTRUCTION",
-                },
-              ],
-              [
-                {
-                  text: "🔑 Купить ключ",
-                  callback_data: "BUY_KEY",
-                },
-              ],
-              [
-                {
-                  text: "📊 Статистика",
-                  callback_data: "STATS",
-                },
-              ],
-            ],
-          },
-        });
-      }
+    if (update.message?.text === "/start") {
+      await sendTG(update.message.chat.id, "👋 Выберите действие:", {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+            [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
+          ],
+        },
+      });
     }
 
-    // ===== CALLBACK =====
     if (update.callback_query) {
-      const cb = update.callback_query;
-      const tgId = cb.from.id;
-      const data = cb.data;
+      const tgId = update.callback_query.from.id;
 
-      // ОБЯЗАТЕЛЬНО отвечаем Telegram
       await fetch(
-        `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
+        https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ callback_query_id: cb.id }),
+          body: JSON.stringify({
+            callback_query_id: update.callback_query.id,
+          }),
         }
       );
 
-      // ===== BUY KEY =====
-      if (data === "BUY_KEY") {
+      if (update.callback_query.data === "BUY_KEY") {
         const gift = await reserveGift(tgId);
 
         if (!gift) {
-          await sendTG(tgId, "❌ Коды временно закончились");
+          await sendTG(tgId, "❌ Коды закончились");
           return res.sendStatus(200);
         }
 
-        const payment = await createPayment({
-          giftId: gift.id,
-          tgUserId: tgId,
-        });
+        const payment = await createPayment(gift.id, tgId);
 
-        await sendTG(tgId, "💳 Оплатите подарок 👇", {
+        await sendTG(tgId, "💳 Оплатите:", {
           reply_markup: {
             inline_keyboard: [
+              [{ text: "Оплатить", url: payment.confirmation.confirmation_url }],
               [
                 {
-                  text: "Оплатить",
-                  url: payment.confirmation.confirmation_url,
-                },
-              ],
-              [
-                {
-                  text: "❌ Отменить",
-                  callback_data: `CANCEL_PAYMENT:${gift.id}`,
+                  text: "❌ Отмена",
+                  callback_data: CANCEL:${gift.id},
                 },
               ],
             ],
@@ -327,126 +177,34 @@ app.post("/telegram-webhook", async (req, res) => {
         });
       }
 
-      // ===== CANCEL =====
-      if (data.startsWith("CANCEL_PAYMENT:")) {
-        const giftId = data.split(":")[1];
-        await cancelReserved(giftId);
-        await sendTG(tgId, "❌ Платёж отменён. Код возвращён.");
-      }
-
-      if (data === "STATS") {
-        const stats = await getTodayStats();
-
-        const text = `
-📊 <b>Статистика на сегодня</b>
-
-🔑 Обычные ключи:
-— Осталось: <b>${stats.normal_left}</b> / ${stats.normal_total}
-
-💎 VIP билет:
-${stats.vip_sold ? "— ✅ уже найден" : "— ❌ ещё в игре"}
-        `;
-
-        await sendMessage(tgId, text, { parse_mode: "HTML" });
+      if (update.callback_query.data.startsWith("CANCEL:")) {
+        const giftId = update.callback_query.data.split(":")[1];
+        await cancelReserve(giftId);
+        await sendTG(tgId, "❌ Оплата отменена");
       }
     }
-
-    return res.sendStatus(200);
-  } catch (e) {
-    console.error("🔥 TG WEBHOOK ERROR:", e);
-    return res.sendStatus(200);
-  }
-});
-
-//===================stats===========
-async function getTodayStats() {
-  const today = new Date().toISOString().slice(0, 10);
-
-  const { data: normalAll } = await supabase
-    .from("gifts")
-    .select("id")
-    .eq("type", "normal")
-    .eq("day", today);
-
-  const { data: normalUsed } = await supabase
-    .from("gifts")
-    .select("id")
-    .eq("type", "normal")
-    .eq("is_used", true)
-    .eq("day", today);
-
-  const { data: vipUsed } = await supabase
-    .from("gifts")
-    .select("id")
-    .eq("type", "vip")
-    .eq("is_used", true)
-    .eq("day", today);
-
-  return {
-    normal_left: (normalAll?.length || 0) - (normalUsed?.length || 0),
-    normal_total: normalAll?.length || 0,
-    vip_sold: (vipUsed?.length || 0) > 0,
-  };
-}
-// ================== YOOKASSA WEBHOOK ==================
-app.post("/yookassa-webhook", async (req, res) => {
-  try {
-    const event = req.body;
-
-    if (event.event !== "payment.succeeded") {
-      return res.sendStatus(200);
-    }
-
-    const payment = event.object;
-    const giftId = payment.metadata.gift_id;
-    const tgUserId = payment.metadata.tg_user_id;
-
-    const { data: gift } = await supabase
-      .from("gifts")
-      .update({
-        status: "paid",
-        payment_id: payment.id,
-      })
-      .eq("id", giftId)
-      .select("code")
-      .single();
-
-    await sendMessage(
-      tgUserId,
-      `🎁 Ваш код:\n\n<code>${gift.code}</code>\n\nВведите его на сайте`,
-      { parse_mode: "HTML" }
-    );
 
     res.sendStatus(200);
   } catch (e) {
-    console.error("YOOKASSA ERROR:", e);
+    console.error(e);
     res.sendStatus(200);
   }
 });
 
-
-// ================== HEALTH ==================
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
-});
-// ================== TG TEST ==================
-app.get("/tg-test", async (req, res) => {
-  await tgSend(ADMIN_TG_ID, "✅ Telegram test OK");
-  res.json({ ok: true });
+// ----- CHECK SITE -----
+app.get("/api/check-gift/:code", async (req, res) => {
+  const ok = await checkGift(req.params.code);
+  res.json({ valid: ok });
 });
 
+// ----- USE SITE -----
+app.post("/api/use-gift/:code", async (req, res) => {
+  const gift = await useGift(req.params.code);
+  if (!gift) return res.status(400).json({ error: "INVALID" });
+  res.json(gift);
+});
 
-
-
-
-
-
-
-
-
-// ================== START ==================
-const LISTEN_PORT = process.env.PORT || 10000;
-
-app.listen(LISTEN_PORT, () => {
-  console.log(`🚀 Server running on port ${LISTEN_PORT}`);
+// ================= START =================
+app.listen(10000, () => {
+  console.log("🚀 Server running on 10000");
 });
