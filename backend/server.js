@@ -374,8 +374,8 @@ app.post("/yookassa-webhook", async (req, res) => {
 
       await sendTG(
         tgUserId,
-        `🎉 <b>Оплата прошла успешно!</b>\n\n` +
-        `🔑 <b>Ваш код:</b> <code>${gift.code}</code>\n\n` +
+        `🎉 <b>Оплата прошла успешно!</b>\n\n +
+        `🔑 <b>Ваш код:</b> <code>${gift.code}</code>\n\n +
         `⬇️ Нажмите кнопку ниже, чтобы проверить его на сайте, возможно вы приобрели VIP-код!`,
         {
           parse_mode: "HTML",
