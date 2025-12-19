@@ -295,26 +295,30 @@ app.post("/yookassa-webhook", async (req, res) => {
     res.sendStatus(200);
   }
 });
-// ----- CHECK SITE -----
+// ===== CHECK GIFT (SITE) =====
 app.post("/api/check-gift", async (req, res) => {
   let { code } = req.body;
+
+  console.log("CHECK BODY:", req.body);
 
   if (!code) {
     return res.status(400).json({ error: "Код не передан" });
   }
 
-  code = code.trim();
+  code = code.trim().toUpperCase();
+  console.log("CHECK CODE:", code);
 
   const { data, error } = await supabase
     .from("gifts")
-    .select("id, code, status, is_used, file_url, type")
-    .ilike("code", code)   // 🔥 ВАЖНО
+    .select("id, code, status, is_used, reserved, file_url, type")
+    .ilike("code", code)
     .eq("status", "paid")
     .eq("is_used", false)
-    .single();
+    .limit(1);
 
-  if (error || !data) {
-    console.log("CHECK FAIL:", error);
+  console.log("CHECK RESULT:", data, error);
+
+  if (error || !data || data.length === 0) {
     return res.status(400).json({
       error: "Неверный или уже использованный код",
     });
@@ -322,13 +326,19 @@ app.post("/api/check-gift", async (req, res) => {
 
   return res.json({
     ok: true,
-    gift: data,
+    gift: data[0],
   });
 });
 // ----- USE SITE -----
+// ===== USE GIFT (SITE) =====
 app.post("/api/use-gift", async (req, res) => {
   let { code } = req.body;
-  code = code.trim();
+
+  if (!code) {
+    return res.status(400).json({ error: "Код не передан" });
+  }
+
+  code = code.trim().toUpperCase();
 
   const { data, error } = await supabase
     .from("gifts")
@@ -337,13 +347,13 @@ app.post("/api/use-gift", async (req, res) => {
       used_at: new Date().toISOString(),
       status: "used",
     })
-    .ilike("code", code)   // 🔥
+    .eq("code", code)
     .eq("status", "paid")
     .eq("is_used", false)
     .select()
-    .single();
+    .limit(1);
 
-  if (error || !data) {
+  if (error || !data || data.length === 0) {
     return res.status(400).json({
       error: "Код уже использован или недействителен",
     });
@@ -351,10 +361,9 @@ app.post("/api/use-gift", async (req, res) => {
 
   return res.json({
     ok: true,
-    gift: data,
+    gift: data[0],
   });
 });
-
 // ================= START =================
 app.listen(10000, () => {
   console.log("🚀 Server running on 10000");
