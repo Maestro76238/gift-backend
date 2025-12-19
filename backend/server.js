@@ -296,27 +296,22 @@ app.post("/yookassa-webhook", async (req, res) => {
   }
 });
 // ===== CHECK GIFT (SITE) =====
+// ===== CHECK GIFT (SITE) =====
 app.post("/api/check-gift", async (req, res) => {
   let { code } = req.body;
-
-  console.log("CHECK BODY:", req.body);
 
   if (!code) {
     return res.status(400).json({ error: "Код не передан" });
   }
 
   code = code.trim().toUpperCase();
-  console.log("CHECK CODE:", code);
 
   const { data, error } = await supabase
     .from("gifts")
-    .select("id, code, status, is_used, reserved, file_url, type")
+    .select("id, code, is_used, file_url, type")
     .ilike("code", code)
-    .eq("status", "paid")
     .eq("is_used", false)
     .limit(1);
-
-  console.log("CHECK RESULT:", data, error);
 
   if (error || !data || data.length === 0) {
     return res.status(400).json({
@@ -329,7 +324,6 @@ app.post("/api/check-gift", async (req, res) => {
     gift: data[0],
   });
 });
-// ----- USE SITE -----
 // ===== USE GIFT (SITE) =====
 app.post("/api/use-gift", async (req, res) => {
   let { code } = req.body;
@@ -348,7 +342,6 @@ app.post("/api/use-gift", async (req, res) => {
       status: "used",
     })
     .eq("code", code)
-    .eq("status", "paid")
     .eq("is_used", false)
     .select()
     .limit(1);
