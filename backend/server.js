@@ -148,34 +148,62 @@ async function confirmPayment({ giftId, paymentId }) {
 }
 
 // ---------- CHECK ----------
-async function checkGift(code) {
-  const { data } = await supabase
-    .from("gifts")
-    .select("status")
-    .eq("code", code)
-    .single();
+app.get("/api/check-gift/:code", async (req, res) => {
+  const code = req.params.code.toUpperCase();
 
-  if (!data) return false;
-  return data.status === "paid";
-}
+  const { data, error } = await supabase
+    .from("gifts")
+    .select("id, code, file_url, is_used, type")
+    .eq("code", code)
+    .eq("is_used", false)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return res.status(500).json({ ok: false });
+  }
+
+  if (!data) {
+    return res.status(404).json({
+      ok: false,
+      message: "Код неверный или уже использованный",
+    });
+  }
+
+  return res.json({
+    ok: true,
+    gift: data,
+  });
+});
 
 // ---------- USE ----------
-async function useGift(code) {
+app.post("/api/use-gift/:code", async (req, res) => {
+  const code = req.params.code.toUpperCase();
+
   const { data, error } = await supabase
     .from("gifts")
     .update({
-      status: "used",
       is_used: true,
       used_at: new Date().toISOString(),
     })
     .eq("code", code)
-    .eq("status", "paid")
-    .select("file_url")
-    .single();
+    .eq("is_used", false)
+    .select()
+    .maybeSingle();
 
-  if (error || !data) return null;
-  return data;
-}
+  if (error) {
+    return res.status(500).json({ ok: false });
+  }
+
+  if (!data) {
+    return res.status(400).json({
+      ok: false,
+      message: "Код уже использован",
+    });
+  }
+
+  return res.json({ ok: true });
+});
 
 // ================= ROUTES =================
 
