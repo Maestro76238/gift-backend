@@ -2,8 +2,18 @@ import express from "express";
 import fetch from "node-fetch";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import cors from "cors";
 
 const app = express();
+
+app.use(cors({
+  origin: [
+    "https://gift-frontend-poth.onrender.com",
+    "http://localhost:3000"
+  ],
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json());
 
 // ================= SUPABASE =================
