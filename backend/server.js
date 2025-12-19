@@ -297,18 +297,24 @@ app.post("/yookassa-webhook", async (req, res) => {
 });
 // ----- CHECK SITE -----
 app.post("/api/check-gift", async (req, res) => {
-  const { code } = req.body;
-  const normalizedCode = code.trim().toUpperCase();
+  let { code } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ error: "Код не передан" });
+  }
+
+  code = code.trim();
 
   const { data, error } = await supabase
     .from("gifts")
-    .select("code, status, is_used, file_url, type")
-    .eq("code", normalizedCode)
+    .select("id, code, status, is_used, file_url, type")
+    .ilike("code", code)   // 🔥 ВАЖНО
     .eq("status", "paid")
     .eq("is_used", false)
     .single();
 
   if (error || !data) {
+    console.log("CHECK FAIL:", error);
     return res.status(400).json({
       error: "Неверный или уже использованный код",
     });
@@ -321,8 +327,8 @@ app.post("/api/check-gift", async (req, res) => {
 });
 // ----- USE SITE -----
 app.post("/api/use-gift", async (req, res) => {
-  const { code } = req.body;
-  const normalizedCode = code.trim().toUpperCase();
+  let { code } = req.body;
+  code = code.trim();
 
   const { data, error } = await supabase
     .from("gifts")
@@ -331,7 +337,7 @@ app.post("/api/use-gift", async (req, res) => {
       used_at: new Date().toISOString(),
       status: "used",
     })
-    .eq("code", normalizedCode)
+    .ilike("code", code)   // 🔥
     .eq("status", "paid")
     .eq("is_used", false)
     .select()
