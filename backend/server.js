@@ -250,27 +250,28 @@ app.post("/api/use-gift/:code", async (req, res) => {
 app.post("/telegram-webhook", async (req, res) => {
   try {
     const update = req.body;
+    console.log("TG UPDATE:", JSON.stringify(update, null, 2));
 
-    // ===== /start =====
+    // ===== MESSAGE =====
     if (update.message?.text === "/start") {
       await sendTG(
         update.message.chat.id,
-        `🎁 НОВОГОДНЯЯ ИГРА НА УДАЧУ
+        `🎁 <b>НОВОГОДНЯЯ ИГРА НА УДАЧУ</b>
 
-Каждый час мы выпускаем ограниченное количество кодов.
-Среди них — 💎 VIP-билет на участие в розыгрыше
-💰 100 000 ₽ 31 декабря.
+Каждый код — шанс.
+Среди них есть 💎 VIP-билет на розыгрыш 💰 100 000 ₽
 
-🔑 Каждый код — уникален
-🎯 Шанс есть у каждого
-⏳ Количество кодов ограничено
+🔑 Коды уникальны
+⏳ Количество ограничено
+🎯 Удача решает всё
 
 Выберите действие 👇`,
         {
+          parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
               [{ text: "📖 FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
-              [{ text: "⏳ Статистика", callback_data: "STATS" }],
+              [{ text: "📊 Статистика", callback_data: "STATS" }],
               [{ text: "🔑 Купить ключ", callback_data: "BUY_KEY" }],
             ],
           },
@@ -280,22 +281,55 @@ app.post("/telegram-webhook", async (req, res) => {
 
     // ===== CALLBACK =====
     if (update.callback_query) {
-      const tgId = update.callback_query.from.id;
-      const data = update.callback_query.data;
+      const cb = update.callback_query;
+      const tgId = cb.from.id;
+      const data = cb.data;
 
-      // обязательный ответ Telegram
+      console.log("➡️ CALLBACK:", data);
+
+      // ОБЯЗАТЕЛЬНЫЙ ответ Telegram
       await fetch(
         `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: update.callback_query.id,
-          }),
+          body: JSON.stringify({ callback_query_id: cb.id }),
         }
       );
 
-      // ===== BUY =====
+      // ===== СТАТИСТИКА =====
+      if (data === "STATS") {
+        try {
+          console.log("📊 STATS pressed by", tgId);
+
+          const r = await fetch(
+            ${process.env.BACKEND_URL}/api/stats
+          );
+
+          if (!r.ok) {
+            throw new Error("Stats API error");
+          }
+
+          const stats = await r.json();
+
+          const text = `📊 <b>Статистика на сегодня</b>
+
+🎁 Осталось кодов: <b>${stats.normal_left}</b>
+
+💎 VIP-билет:
+${stats.vip_found ? "✅ Уже найден" : "❌ Всё ещё в игре"}`;
+
+          await sendTG(tgId, text, { parse_mode: "HTML" });
+        } catch (e) {
+          console.error("STATS ERROR:", e);
+          await sendTG(
+            tgId,
+            "⚠️ Статистика временно недоступна. Попробуйте позже."
+          );
+        }
+      }
+
+      // ===== ПОКУПКА =====
       if (data === "BUY_KEY") {
         const gift = await reserveGift(tgId);
 
@@ -308,7 +342,7 @@ app.post("/telegram-webhook", async (req, res) => {
 
         await sendTG(
           tgId,
-          "💳 Оплатите секретный ключ. После оплаты вы получите код и кнопку перехода на сайт:",
+          "💳 Оплатите ключ и получите свой шанс 👇",
           {
             reply_markup: {
               inline_keyboard: [
@@ -330,26 +364,11 @@ app.post("/telegram-webhook", async (req, res) => {
         );
       }
 
-      // ===== CANCEL =====
+      // ===== ОТМЕНА =====
       if (data.startsWith("CANCEL:")) {
         const giftId = data.split(":")[1];
         await cancelReserve(giftId);
-        await sendTG(tgId, "❌ Оплата отменена");
-      }
-
-      // ===== STATS =====
-      if (data === "STATS") {
-        const r = await fetch(process.env.BACKEND_URL + "/api/stats");
-        const stats = await r.json();
-
-        const text = `⏳ <b>Статистика</b>
-
-🎁 Осталось кодов: <b>${stats.normal_left}</b>
-
-💎 VIP-код:
-${stats.vip_found ? "✅ Уже найден" : "❌ Ещё в игре"}`;
-
-        await sendTG(tgId, text, { parse_mode: "HTML" });
+        await sendTG(tgId, "❌ Оплата отменена, код возвращён");
       }
     }
 
@@ -359,7 +378,6 @@ ${stats.vip_found ? "✅ Уже найден" : "❌ Ещё в игре"}`;
     return res.sendStatus(200);
   }
 });
-
 
 
 // ===========YOOKASSA==========
