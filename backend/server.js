@@ -298,12 +298,13 @@ app.post("/yookassa-webhook", async (req, res) => {
 // ----- CHECK SITE -----
 app.post("/api/check-gift", async (req, res) => {
   const { code } = req.body;
+  const normalizedCode = code.trim().toUpperCase();
 
   const { data, error } = await supabase
     .from("gifts")
     .select("code, status, is_used, file_url, type")
-    .eq("code", code)
-    .not("status", "eq", "used")
+    .eq("code", normalizedCode)
+    .eq("status", "paid")
     .eq("is_used", false)
     .single();
 
@@ -321,6 +322,7 @@ app.post("/api/check-gift", async (req, res) => {
 // ----- USE SITE -----
 app.post("/api/use-gift", async (req, res) => {
   const { code } = req.body;
+  const normalizedCode = code.trim().toUpperCase();
 
   const { data, error } = await supabase
     .from("gifts")
@@ -329,7 +331,7 @@ app.post("/api/use-gift", async (req, res) => {
       used_at: new Date().toISOString(),
       status: "used",
     })
-    .eq("code", code)
+    .eq("code", normalizedCode)
     .eq("status", "paid")
     .eq("is_used", false)
     .select()
