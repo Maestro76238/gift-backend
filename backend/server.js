@@ -71,29 +71,28 @@ async function getTodayStats() {
 }
 // ================== RESERVE CODE ==================
 async function reserveGift(tgUserId) {
-  const { data, error } = await supabase
+  const { data: gift } = await supabase
     .from("gifts")
     .select("*")
     .eq("type", "normal")
+    .eq("status", "free")
     .eq("reserved", false)
-    .eq("is_used", false)
-    .or("status.is.null,status.eq.free")
     .limit(1)
     .single();
 
-  if (error || !data) return null;
+  if (!gift) return null;
 
   await supabase
     .from("gifts")
     .update({
-      reserved: true,
       status: "reserved",
+      reserved: true,
       reserved_at: new Date().toISOString(),
       tg_user_id: tgUserId,
     })
-    .eq("id", data.id);
+    .eq("id", gift.id);
 
-  return data;
+  return gift;
 }
 // ================== TELEGRAM WEBHOOK ==================
 app.post("/telegram-webhook", async (req, res) => {
@@ -253,25 +252,17 @@ async function getGift(code) {
 
 //====================check gift=================
 async function checkGift(code) {
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("gifts")
     .select("status")
     .eq("code", code)
     .single();
 
-  if (error || !data) {
-    return { valid: false, reason: "INVALID" };
-  }
+  if (!data) return { valid: false };
 
-  if (data.status === "paid") {
-    return { valid: true };
-  }
+  if (data.status === "paid") return { valid: true };
 
-  if (data.status === "used") {
-    return { valid: false, reason: "ALREADY_USED" };
-  }
-
-  return { valid: false, reason: "NOT_PAID" };
+  return { valid: false };
 }
 
 // ================== USE GIFT ==================
@@ -326,7 +317,6 @@ async function createPayment({ giftId, tgUserId }) {
 
   return await res.json();
 }
-
 // ================== CONFIRM RESERVATION ==================
 async function confirmReservation(reservationId) {
   // 1. Получаем подарок из БД
