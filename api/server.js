@@ -13,56 +13,156 @@ const __dirname = dirname(__filename);
 app.use(express.json());
 app.use(express.static(join(__dirname, '../public')));
 
-console.log("🚀 Бот запущен с защитой от флуда");
+console.log("⚡ Агрессивный keep-alive (10 секунд)");
 
 // ============ КОНФИГ ============
 const CONFIG = {
   TG_TOKEN: process.env.TG_TOKEN,
   ADMIN_ID: process.env.ADMIN_TG_ID,
   PROJECT: "gift-backend-nine",
+  FRONTEND_URL: process.env.FRONTEND_URL || "https://gift-backend-nine.vercel.app",
   
-  // Настройки защиты от флуда
+  // АГРЕССИВНЫЙ KEEP-ALIVE
+  KEEP_ALIVE_INTERVAL: 5 * 1000, // 10 секунд!
+  
   RATE_LIMIT: {
-    MESSAGES_PER_MINUTE: 5,     // Макс сообщений в минуту
-    CALLBACKS_PER_MINUTE: 10,   // Макс callback в минуту
-    USER_COOLDOWN_MS: 1000,     // Задержка между действиями пользователя
-    IP_COOLDOWN_MS: 500         // Задержка между запросами с одного IP
+    MESSAGES_PER_MINUTE: 5,
+    CALLBACKS_PER_MINUTE: 10,
+    USER_COOLDOWN_MS: 1000,
+    IP_COOLDOWN_MS: 500
   }
 };
 
-// ============ СИСТЕМА ЗАЩИТЫ ОТ ФЛУДА ============
+// ============ СИСТЕМА KEEP-ALIVE ============
 
-const userRateLimit = new Map();    // userId -> {count, resetTime}
-const ipRateLimit = new Map();      // ip -> {count, resetTime}
-const userLastAction = new Map();   // userId -> lastActionTime
+console.log(`🫀 Keep-alive каждые ${CONFIG.KEEP_ALIVE_INTERVAL / 1000} секунд`);
 
-// Проверка лимитов для пользователя
+// Первый пинг сразу
+setTimeout(() => {
+  fetch(`${CONFIG.FRONTEND_URL}/api/ping`)
+    .then(() => console.log("✅ Первый keep-alive отправлен"))
+    .catch(() => console.log("⚠️ Первый keep-alive не удался"));
+}, 1000);
+
+// Регулярные пинги
+const keepAliveInterval = setInterval(() => {
+  const start = Date.now();
+  
+  fetch(`${CONFIG.FRONTEND_URL}/api/ping`, {
+    signal: AbortSignal.timeout(5000)
+  })
+  .then(response => {
+    if (response.ok) {
+      const time = Date.now() - start;
+      console.log(`🫀 Keep-alive OK за ${time}ms`);
+    } else {
+      console.log(`🫀 Keep-alive status: ${response.status}`);
+    }
+  })
+  .catch(error => {
+    console.log(`🫀 Keep-alive ошибка: ${error.message}`);
+  });
+}, CONFIG.KEEP_ALIVE_INTERVAL);
+
+// Остановка при завершении (если нужно)
+process.on('SIGTERM', () => {
+  clearInterval(keepAliveInterval);
+});
+
+// ============ ПРОВЕРКА ПОДКЛЮЧЕНИЙ ============
+
+let supabase = null;
+let dbStatus = { connected: false, error: null, table: 'gifts' };
+let telegramStatus = { connected: false, error: null };
+
+async function checkSupabase() {
+  try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      dbStatus = { connected: false, error: "Нет переменных окружения Supabase" };
+      return;
+    }
+    
+    supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    
+    const { data, error } = await supabase
+      .from('gifts')
+      .select('id, code, type, status, is_used')
+      .limit(1);
+    
+    if (error) {
+      dbStatus = { connected: false, error: error.message };
+    } else {
+      dbStatus = { 
+        connected: true, 
+        table: 'gifts',
+        columns: ['id', 'code', 'type', 'status', 'reserved', 'reserved_at', 'tg_user_id', 'payment_id', 'is_used', 'used_at', 'created_at'],
+        sample: data?.[0] || 'нет данных'
+      };
+    }
+  } catch (error) {
+    dbStatus = { connected: false, error: error.message };
+  }
+}
+
+async function checkTelegram() {
+  try {
+    if (!CONFIG.TG_TOKEN) {
+      telegramStatus = { connected: false, error: "Нет TG_TOKEN" };
+      return;
+    }
+    
+    const response = await fetch(
+      `https://api.telegram.org/bot${CONFIG.TG_TOKEN}/getMe`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    
+    const data = await response.json();
+    
+    if (data.ok) {
+      telegramStatus = { 
+        connected: true, 
+        bot: data.result.username,
+        name: data.result.first_name
+      };
+    } else {
+      telegramStatus = { connected: false, error: data.description };
+    }
+  } catch (error) {
+    telegramStatus = { connected: false, error: error.message };
+  }
+}
+
+(async () => {
+  await Promise.all([checkSupabase(), checkTelegram()]);
+})();
+
+// ============ СИСТЕМА ЗАЩИТЫ ============
+const userRateLimit = new Map();
+const ipRateLimit = new Map();
+const userLastAction = new Map();
+
 function checkUserRateLimit(userId, type = 'message') {
   const now = Date.now();
   const limit = type === 'callback' 
     ? CONFIG.RATE_LIMIT.CALLBACKS_PER_MINUTE 
     : CONFIG.RATE_LIMIT.MESSAGES_PER_MINUTE;
   
-  // Проверка времени последнего действия
   const lastAction = userLastAction.get(userId);
   if (lastAction && (now - lastAction) < CONFIG.RATE_LIMIT.USER_COOLDOWN_MS) {
     return { allowed: false, reason: 'cooldown', wait: CONFIG.RATE_LIMIT.USER_COOLDOWN_MS - (now - lastAction) };
   }
   
-  // Проверка лимита в минуту
   let userData = userRateLimit.get(userId);
   if (!userData) {
     userData = { count: 0, resetTime: now + 60000 };
     userRateLimit.set(userId, userData);
   }
   
-  // Сброс счетчика если минута прошла
   if (now > userData.resetTime) {
     userData.count = 0;
     userData.resetTime = now + 60000;
   }
   
-  // Проверка лимита
   if (userData.count >= limit) {
     return { allowed: false, reason: 'rate_limit', resetIn: userData.resetTime - now };
   }
@@ -72,11 +172,8 @@ function checkUserRateLimit(userId, type = 'message') {
   return { allowed: true };
 }
 
-// Проверка лимитов для IP
 function checkIPRateLimit(ip) {
   const now = Date.now();
-  
-  // Быстрая проверка cooldown по IP
   const ipData = ipRateLimit.get(ip);
   if (ipData && (now - ipData.lastRequest) < CONFIG.RATE_LIMIT.IP_COOLDOWN_MS) {
     return { allowed: false, reason: 'ip_cooldown' };
@@ -86,38 +183,117 @@ function checkIPRateLimit(ip) {
   return { allowed: true };
 }
 
-// Очистка старых записей каждые 5 минут
 setInterval(() => {
   const now = Date.now();
   const fiveMinutesAgo = now - 5 * 60 * 1000;
   
-  // Очистка userLastAction
   for (const [userId, time] of userLastAction.entries()) {
-    if (time < fiveMinutesAgo) {
-      userLastAction.delete(userId);
-    }
+    if (time < fiveMinutesAgo) userLastAction.delete(userId);
   }
   
-  // Очистка ipRateLimit
   for (const [ip, data] of ipRateLimit.entries()) {
-    if (data.lastRequest < fiveMinutesAgo) {
-      ipRateLimit.delete(ip);
-    }
+    if (data.lastRequest < fiveMinutesAgo) ipRateLimit.delete(ip);
   }
-  
-  console.log(`🧹 Очистка кеша. User actions: ${userLastAction.size}, IPs: ${ipRateLimit.size}`);
 }, 5 * 60 * 1000);
 
-// ============ ИНИЦИАЛИЗАЦИЯ ============
-let supabase;
-if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-  console.log("✅ Supabase подключен");
+// ============ ФУНКЦИИ ДЛЯ БД ============
+
+async function reserveGiftForUser(tgUserId) {
+  if (!dbStatus.connected || !supabase) return null;
+  
+  try {
+    const { data: gift, error } = await supabase
+      .from('gifts')
+      .select('*')
+      .eq('status', 'free')
+      .eq('type', 'normal')
+      .limit(1)
+      .single();
+    
+    if (error || !gift) return null;
+    
+    const { error: updateError } = await supabase
+      .from('gifts')
+      .update({
+        status: 'reserved',
+        reserved: true,
+        reserved_at: new Date().toISOString(),
+        tg_user_id: tgUserId
+      })
+      .eq('id', gift.id);
+    
+    if (updateError) return null;
+    
+    return gift;
+    
+  } catch (error) {
+    return null;
+  }
 }
 
-// ============ БЫСТРЫЕ ФУНКЦИИ ============
+async function getStatsFromDB() {
+  if (!dbStatus.connected || !supabase) {
+    return { normal_left: 0, vip_found: false, error: "БД не подключена" };
+  }
+  
+  try {
+    const { count: normal_left, error: normalError } = await supabase
+      .from('gifts')
+      .select('*', { count: 'exact', head: true })
+      .eq('type', 'normal')
+      .eq('status', 'free');
+    
+    const { data: vip_used, error: vipError } = await supabase
+      .from('gifts')
+      .select('id')
+      .eq('type', 'vip')
+      .eq('is_used', true)
+      .limit(1);
+    
+    if (normalError || vipError) {
+      return { normal_left: 0, vip_found: false, error: "Ошибка запроса" };
+    }
+    
+    return {
+      normal_left: normal_left || 0,
+      vip_found: vip_used?.length > 0,
+      db_connected: true
+    };
+    
+  } catch (error) {
+    return { normal_left: 0, vip_found: false, error: error.message };
+  }
+}
+
+async function checkGiftCode(code) {
+  if (!dbStatus.connected || !supabase) {
+    return { ok: false, error: "БД не подключена" };
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from('gifts')
+      .select('id, code, type, is_used, status')
+      .eq('code', code.toUpperCase())
+      .maybeSingle();
+    
+    if (error) return { ok: false, error: "Ошибка базы данных" };
+    if (!data) return { ok: false, error: "Код не найден" };
+    if (data.is_used) return { ok: false, error: "Код уже использован" };
+    if (data.status !== 'paid') return { ok: false, error: "Код не оплачен" };
+    
+    return { ok: true, gift: data };
+    
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+// ============ ОБЩИЕ ФУНКЦИИ ============
 
 function sendInstant(chatId, text, options = {}) {
+  if (!telegramStatus.connected) return;
+  
   const message = {
     chat_id: chatId,
     text: text,
@@ -133,6 +309,8 @@ function sendInstant(chatId, text, options = {}) {
 }
 
 function answerCallbackFast(callbackId, text = "", showAlert = false) {
+  if (!telegramStatus.connected) return;
+  
   fetch(`https://api.telegram.org/bot${CONFIG.TG_TOKEN}/answerCallbackQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -145,50 +323,56 @@ function answerCallbackFast(callbackId, text = "", showAlert = false) {
   }).catch(() => {});
 }
 
-// ============ TELEGRAM WEBHOOK ============
+// ============ МАРШРУТЫ ============
 
+// Ping для keep-alive
+app.get("/api/ping", (req, res) => {
+  res.json({ 
+    status: "alive", 
+    project: CONFIG.PROJECT,
+    keep_alive: "10s",
+    timestamp: Date.now(),
+    uptime: process.uptime().toFixed(2) + "s"
+  });
+});
+
+// Telegram вебхук
 app.post("/api/telegram-webhook", async (req, res) => {
   const clientIP = req.headers['x-forwarded-for'] || req.ip || 'unknown';
-  const startTime = Date.now();
-  
-  // СРАЗУ отвечаем Telegram
   res.sendStatus(200);
   
   const update = req.body;
   const requestId = Date.now();
   
-  // 📨 Обработка /start
   if (update.message?.text === "/start") {
     const chatId = update.message.chat.id;
     const userId = update.message.from.id;
     
-    // Проверка rate limit
     const ipCheck = checkIPRateLimit(clientIP);
-    if (!ipCheck.allowed) {
-      console.log(`🚫 IP ${clientIP} в cooldown`);
-      return;
-    }
+    if (!ipCheck.allowed) return;
     
     const userCheck = checkUserRateLimit(userId, 'message');
     if (!userCheck.allowed) {
-      console.log(`🚫 User ${userId} превысил лимит:`, userCheck.reason);
-      
       if (userCheck.reason === 'rate_limit') {
-        sendInstant(chatId, `🚫 <b>Слишком много запросов!</b>\n\nПожалуйста, подождите ${Math.ceil(userCheck.resetIn / 1000)} секунд.`, {
+        sendInstant(chatId, `🚫 <b>Слишком много запросов!</b>\n\nПодождите ${Math.ceil(userCheck.resetIn / 1000)} секунд.`, {
           parse_mode: "HTML"
         });
       }
       return;
     }
     
-    console.log(`✅ /start от ${userId} (IP: ${clientIP}) за ${Date.now() - startTime}ms`);
+    const stats = await getStatsFromDB();
+    const dbStatusText = dbStatus.connected 
+      ? `✅ База данных подключена\n🎁 Свободных ключей: ${stats.normal_left}` 
+      : "⚠️ База данных offline";
     
     sendInstant(chatId,
 `🎁 <b>НОВОГОДНЯЯ ИГРА 2026</b>
 
-✅ <b>Безопасный и быстрый бот</b>
-🔒 Защита от флуда активна
-⏱️ ID запроса: ${requestId}
+${dbStatusText}
+🌐 Сайт: ${CONFIG.FRONTEND_URL}
+🔒 Защита от флуда: активна
+🫀 Keep-alive: 10 сек
 
 🎯 Купи ключ - получи подарок
 💰 Шанс на 100 000 ₽
@@ -204,7 +388,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
         inline_keyboard: [
           [{ text: "🎯 КУПИТЬ КЛЮЧ", callback_data: `BUY_${requestId}_${userId}` }],
           [{ text: "📊 СТАТИСТИКА", callback_data: `STATS_${requestId}_${userId}` }],
-          [{ text: "❓ FAQ", url: "https://telegra.ph/FAQ-12-16-21" }]
+          [{ text: "🔍 ПРОВЕРИТЬ КОД", url: `${CONFIG.FRONTEND_URL}/check.html` }]
         ]
       }
     });
@@ -212,7 +396,6 @@ app.post("/api/telegram-webhook", async (req, res) => {
     return;
   }
   
-  // 🔘 Обработка CALLBACK с защитой от флуда
   if (update.callback_query) {
     const callbackId = update.callback_query.id;
     const chatId = update.callback_query.from.id;
@@ -220,160 +403,145 @@ app.post("/api/telegram-webhook", async (req, res) => {
     const data = update.callback_query.data;
     const parts = data.split('_');
     const action = parts[0];
-    const originalRequestId = parts[1] || 'unknown';
     
-    // Проверка rate limit для callback
     const ipCheck = checkIPRateLimit(clientIP);
     if (!ipCheck.allowed) {
-      console.log(`🚫 Callback от IP ${clientIP} в cooldown`);
-      answerCallbackFast(callbackId, "Подождите немного...", true);
+      answerCallbackFast(callbackId, "Подождите...", true);
       return;
     }
     
     const userCheck = checkUserRateLimit(userId, 'callback');
     if (!userCheck.allowed) {
-      console.log(`🚫 Callback от ${userId} превысил лимит:`, userCheck.reason);
-      
       if (userCheck.reason === 'cooldown') {
         answerCallbackFast(callbackId, `Подождите ${Math.ceil(userCheck.wait / 1000)}с...`, true);
-      } else if (userCheck.reason === 'rate_limit') {
-        answerCallbackFast(callbackId, `Лимит! Ждите ${Math.ceil(userCheck.resetIn / 1000)}с`, true);
       }
       return;
     }
     
-    console.log(`✅ Callback ${action} от ${userId} за ${Date.now() - startTime}ms`);
-    
-    // СРАЗУ отвечаем на callback
     answerCallbackFast(callbackId);
     
-    // Обработка действий
     switch (action) {
       case "STATS":
-        sendInstant(chatId,
-`📊 <b>СТАТИСТИКА</b>
-
-🎁 Осталось ключей: <b>2</b>
-💎 VIP-билет: 🎯 В ИГРЕ
-👤 Запросов у вас: ${userRateLimit.get(userId)?.count || 0}/мин
-🔒 Защита: активна
-
-👇 Успей купить ключ!`, {
-          parse_mode: "HTML"
-        });
+        const stats = await getStatsFromDB();
+        let statsText = "📊 <b>СТАТИСТИКА ИЗ БАЗЫ</b>\n\n";
+        
+        if (stats.error) {
+          statsText += `⚠️ Ошибка: ${stats.error}\n`;
+        } else {
+          statsText += `🎁 Свободных ключей: <b>${stats.normal_left}</b>\n`;
+          statsText += `💎 VIP-билет: ${stats.vip_found ? "❌ Найден" : "🎯 В игре"}\n`;
+        }
+        
+        statsText += `\n🌐 Проверить код: ${CONFIG.FRONTEND_URL}/check.html`;
+        
+        sendInstant(chatId, statsText, { parse_mode: "HTML" });
         break;
         
       case "BUY":
+        const gift = await reserveGiftForUser(userId);
+        
+        if (!gift) {
+          sendInstant(chatId, "❌ К сожалению, ключи закончились или произошла ошибка");
+          break;
+        }
+        
         sendInstant(chatId,
 `💳 <b>ОПЛАТА 100 ₽</b>
 
-✅ Гарантированный подарок
+✅ Подарок зарезервирован!
+🔑 Код: ${gift.code}
+
 🎯 Шанс на VIP-билет
-💰 Участие в розыгрыше
+💰 Участие в розыгрыше 100К
 
 <b>Возраст:</b> от 14 лет
 <b>Возврат:</b> не предусмотрен
-📋 ID запроса: ${originalRequestId}
 
 👇 Нажмите для оплаты:`, {
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
               [{ text: "💳 ОПЛАТИТЬ (T-Банк)", url: "https://t.me/gift_celler_bot" }],
-              [{ text: "❌ ОТМЕНА", callback_data: `CANCEL_${originalRequestId}_${userId}` }]
+              [{ text: "❌ ОТМЕНА", callback_data: `CANCEL_${Date.now()}_${userId}` }]
             ]
           }
         });
         break;
         
       case "CANCEL":
-        sendInstant(chatId, `❌ Покупка отменена\n📋 Запрос ID: ${originalRequestId}`);
+        sendInstant(chatId, "❌ Покупка отменена");
         break;
-        
-      default:
-        sendInstant(chatId, "⚠️ Неизвестное действие");
     }
   }
 });
 
-// ============ API МАРШРУТЫ ============
-
-// Мониторинг защиты
-app.get("/api/security-status", (req, res) => {
-  res.json({
-    active_users: userLastAction.size,
-    active_ips: ipRateLimit.size,
-    rate_limits: CONFIG.RATE_LIMIT,
-    project: CONFIG.PROJECT,
-    timestamp: new Date().toISOString()
-  });
-});
-
-app.get("/api/stats", (req, res) => {
-  res.json({
-    normal_left: 2,
-    vip_found: false,
-    project: CONFIG.PROJECT,
-    security: "enabled"
-  });
-});
-
-app.get("/api/check-gift/:code", (req, res) => {
-  const code = req.params.code.toUpperCase();
+// API для сайта
+app.get("/api/stats", async (req, res) => {
+  const stats = await getStatsFromDB();
   
-  // Простая проверка кода без сложной логики
+  res.json({
+    ...stats,
+    site_url: CONFIG.FRONTEND_URL,
+    check_url: `${CONFIG.FRONTEND_URL}/check.html`,
+    timestamp: new Date().toISOString(),
+    keep_alive: "5s"
+  });
+});
+
+app.get("/api/check-gift/:code", async (req, res) => {
+  const code = req.params.code.toUpperCase();
+  const result = await checkGiftCode(code);
+  
+  if (!result.ok) {
+    return res.status(404).json({
+      ok: false,
+      message: result.error,
+      code: code,
+      site_url: CONFIG.FRONTEND_URL
+    });
+  }
+  
   res.json({
     ok: true,
-    code: code,
-    gift: { type: "normal", status: "valid" },
-    security: "protected"
+    gift: result.gift,
+    site_url: CONFIG.FRONTEND_URL,
+    check_url: `${CONFIG.FRONTEND_URL}/check.html`
   });
 });
 
-// Keep-alive
-app.get("/api/ping", (req, res) => {
-  res.json({ 
-    status: "alive", 
-    project: CONFIG.PROJECT, 
-    time: Date.now(),
-    security: "active"
-  });
-});
-
-// Установка вебхука
-app.get("/api/setup", async (req, res) => {
-  const webhookUrl = `https://gift-backend-nine.vercel.app/api/telegram-webhook`;
+app.post("/api/use-gift/:code", async (req, res) => {
+  const code = req.params.code.toUpperCase();
+  
+  if (!dbStatus.connected || !supabase) {
+    return res.status(500).json({ ok: false, error: "БД не подключена" });
+  }
   
   try {
-    const response = await fetch(
-      `https://api.telegram.org/bot${CONFIG.TG_TOKEN}/setWebhook`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: webhookUrl,
-          drop_pending_updates: true,
-          max_connections: 100
-        })
-      }
-    );
+    const { data: gift, error } = await supabase
+      .from('gifts')
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString(),
+        status: 'used'
+      })
+      .eq('code', code)
+      .eq('is_used', false)
+      .select()
+      .maybeSingle();
     
-    const result = await response.json();
-    res.json({ 
-      ok: true, 
-      result, 
-      webhookUrl,
-      security: "rate-limiting enabled"
-    });
-  } catch (e) {
-    res.json({ ok: false, error: e.message });
+    if (error) return res.status(500).json({ ok: false, error: "Ошибка базы данных" });
+    if (!gift) return res.status(400).json({ ok: false, message: "Код не найден или уже использован" });
+    
+    if (CONFIG.ADMIN_ID && telegramStatus.connected) {
+      sendInstant(CONFIG.ADMIN_ID, `🎁 Код активирован: ${code}`);
+    }
+    
+    res.json({ ok: true, message: "Код успешно активирован", gift_code: gift.code });
+    
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
-
-// Keep-alive каждые 4 минуты
-setInterval(() => {
-  fetch("https://gift-backend-nine.vercel.app/api/ping").catch(() => {});
-}, 4 * 60 * 1000);
 
 // Главная
 app.get("/", (req, res) => {
