@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
 app.use(express.json());
 app.use(express.static(join(__dirname, '../public')));
 
-console.log("⚡ Агрессивный keep-alive (10 секунд)");
+console.log("⚡ Бот запущен с супер-агрессивным keep-alive (1 секунда)");
 
 // ============ КОНФИГ ============
 const CONFIG = {
@@ -22,8 +22,8 @@ const CONFIG = {
   PROJECT: "gift-backend-nine",
   FRONTEND_URL: process.env.FRONTEND_URL || "https://gift-backend-nine.vercel.app",
   
-  // АГРЕССИВНЫЙ KEEP-ALIVE
-  KEEP_ALIVE_INTERVAL: 5 * 1000, // 5 секунд!
+  // СУПЕР-АГРЕССИВНЫЙ KEEP-ALIVE - 1 СЕКУНДА!
+  KEEP_ALIVE_INTERVAL: 1 * 1000,
   
   RATE_LIMIT: {
     MESSAGES_PER_MINUTE: 5,
@@ -33,40 +33,55 @@ const CONFIG = {
   }
 };
 
-// ============ СИСТЕМА KEEP-ALIVE ============
+// ============ СУПЕР-АГРЕССИВНЫЙ KEEP-ALIVE ============
 
-console.log(`🫀 Keep-alive каждые ${CONFIG.KEEP_ALIVE_INTERVAL / 1000} секунд`);
+console.log(`🫀 Keep-alive: ${CONFIG.KEEP_ALIVE_INTERVAL}ms (60 запросов/мин)`);
 
-// Первый пинг сразу
-setTimeout(() => {
-  fetch(`${CONFIG.FRONTEND_URL}/api/ping`)
-    .then(() => console.log("✅ Первый keep-alive отправлен"))
-    .catch(() => console.log("⚠️ Первый keep-alive не удался"));
-}, 1000);
+let keepAliveCounter = 0;
+const keepAliveEndpoints = ['/api/ping', '/api/stats', '/', '/health', '/api/health-check'];
 
-// Регулярные пинги
+// Быстрый старт - первые 15 запросов
+console.log("🚀 Быстрый старт: 15 запросов сразу");
+for (let i = 0; i < 15; i++) {
+  setTimeout(() => {
+    const endpoint = keepAliveEndpoints[i % keepAliveEndpoints.length];
+    fetch(`${CONFIG.FRONTEND_URL}${endpoint}`, {
+      signal: AbortSignal.timeout(1000)
+    })
+    .then(() => {
+      if (i < 5) console.log(`🚀 Стартовый запрос ${i + 1}/15: ${endpoint}`);
+    })
+    .catch(() => {});
+  }, i * 200);
+}
+
+// Основной keep-alive каждую секунду
 const keepAliveInterval = setInterval(() => {
-  const start = Date.now();
+  keepAliveCounter++;
+  const endpoint = keepAliveEndpoints[keepAliveCounter % keepAliveEndpoints.length];
+  const startTime = Date.now();
   
-  fetch(`${CONFIG.FRONTEND_URL}/api/ping`, {
-    signal: AbortSignal.timeout(5000)
+  fetch(`${CONFIG.FRONTEND_URL}${endpoint}`, {
+    signal: AbortSignal.timeout(1500)
   })
   .then(response => {
-    if (response.ok) {
-      const time = Date.now() - start;
-      console.log(`🫀 Keep-alive OK за ${time}ms`);
-    } else {
-      console.log(`🫀 Keep-alive status: ${response.status}`);
+    const time = Date.now() - startTime;
+    // Логируем только каждый 30-й запрос (раз в 30 секунд)
+    if (keepAliveCounter % 30 === 0) {
+      console.log(`🫀 Keep-alive #${keepAliveCounter}: ${time}ms (${endpoint})`);
     }
   })
-  .catch(error => {
-    console.log(`🫀 Keep-alive ошибка: ${error.message}`);
+  .catch(() => {
+    if (keepAliveCounter % 10 === 0) {
+      console.log(`⚠️ Keep-alive #${keepAliveCounter} пропущен`);
+    }
   });
 }, CONFIG.KEEP_ALIVE_INTERVAL);
 
-// Остановка при завершении (если нужно)
+// Очистка при завершении
 process.on('SIGTERM', () => {
   clearInterval(keepAliveInterval);
+  console.log("🛑 Keep-alive остановлен");
 });
 
 // ============ ПРОВЕРКА ПОДКЛЮЧЕНИЙ ============
@@ -325,14 +340,35 @@ function answerCallbackFast(callbackId, text = "", showAlert = false) {
 
 // ============ МАРШРУТЫ ============
 
-// Ping для keep-alive
+// Основной ping для keep-alive
 app.get("/api/ping", (req, res) => {
   res.json({ 
     status: "alive", 
     project: CONFIG.PROJECT,
-    keep_alive: "10s",
+    keep_alive: "1s",
     timestamp: Date.now(),
-    uptime: process.uptime().toFixed(2) + "s"
+    uptime: process.uptime().toFixed(2) + "s",
+    requests: keepAliveCounter
+  });
+});
+
+// Health check для внешних сервисов
+app.get("/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    keep_alive: "1s",
+    project: CONFIG.PROJECT
+  });
+});
+
+app.get("/api/health-check", (req, res) => {
+  res.json({
+    ok: true,
+    message: "Сервер работает",
+    time: Date.now(),
+    keep_alive_requests: keepAliveCounter
   });
 });
 
@@ -372,7 +408,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 ${dbStatusText}
 🌐 Сайт: ${CONFIG.FRONTEND_URL}
 🔒 Защита от флуда: активна
-🫀 Keep-alive: 10 сек
+🫀 Keep-alive: 1 секунда
 
 🎯 Купи ключ - получи подарок
 💰 Шанс на 100 000 ₽
@@ -484,7 +520,8 @@ app.get("/api/stats", async (req, res) => {
     site_url: CONFIG.FRONTEND_URL,
     check_url: `${CONFIG.FRONTEND_URL}/check.html`,
     timestamp: new Date().toISOString(),
-    keep_alive: "10s"
+    keep_alive: "1s",
+    keep_alive_requests: keepAliveCounter
   });
 });
 
@@ -541,6 +578,47 @@ app.post("/api/use-gift/:code", async (req, res) => {
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
+});
+
+// Статус системы
+app.get("/api/status", async (req, res) => {
+  await Promise.all([checkSupabase(), checkTelegram()]);
+  
+  const stats = await getStatsFromDB();
+  
+  res.json({
+    project: CONFIG.PROJECT,
+    timestamp: new Date().toISOString(),
+    
+    database: {
+      connected: dbStatus.connected,
+      table: dbStatus.table,
+      stats: stats
+    },
+    
+    telegram: telegramStatus,
+    
+    frontend: {
+      url: CONFIG.FRONTEND_URL,
+      endpoints: {
+        check_code: `${CONFIG.FRONTEND_URL}/check.html`,
+        api_stats: `${CONFIG.FRONTEND_URL}/api/stats`,
+        webhook: `${CONFIG.FRONTEND_URL}/api/telegram-webhook`
+      }
+    },
+    
+    keep_alive: {
+      interval: "1s",
+      requests: keepAliveCounter,
+      endpoints: keepAliveEndpoints
+    },
+    
+    security: {
+      active_users: userLastAction.size,
+      active_ips: ipRateLimit.size,
+      rate_limits: CONFIG.RATE_LIMIT
+    }
+  });
 });
 
 // Главная
