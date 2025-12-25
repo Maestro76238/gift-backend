@@ -3,8 +3,14 @@ import fetch from "node-fetch";
 import 'dotenv/config';
 import { createClient } from "@supabase/supabase-js";
 import cors from "cors";
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const app = express();
+
+// Получаем текущую директорию для ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Middleware
 app.use(cors({
@@ -13,7 +19,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Обслуживание статических файлов из папки public
+app.use(express.static(join(__dirname, '../public')));
+
 console.log("🚀 Новогодний сервер запущен!");
+console.log("📁 Обслуживаю статические файлы из:", join(__dirname, '../public'));
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 let supabase;
@@ -145,27 +155,28 @@ async function createTBankPayment(giftId, tgUserId) {
 
 // ============ МАРШРУТЫ API ============
 
-// Главная страница
-app.get("/", (req, res) => {
+// Главная страница API (только JSON)
+app.get("/api", (req, res) => {
   res.json({ 
     status: "online",
-    name: "🎁 Новогодний Gift Bot",
+    name: "🎁 Новогодний Gift Bot API",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
     endpoints: {
-      test: "/test",
-      webhook: "/set-webhook",
-      api: "/api/*",
-      telegram: "/telegram-webhook"
+      test: "/api/test",
+      webhook: "/api/set-webhook",
+      stats: "/api/stats",
+      check_gift: "/api/check-gift/:code",
+      telegram: "/api/telegram-webhook"
     }
   });
 });
 
 // Тест
-app.get("/test", (req, res) => {
+app.get("/api/test", (req, res) => {
   res.json({ 
     ok: true, 
-    message: "✅ Сервер работает отлично!",
+    message: "✅ API работает отлично!",
     env: {
       hasToken: !!process.env.TG_TOKEN,
       hasSupabase: !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_KEY,
@@ -176,7 +187,7 @@ app.get("/test", (req, res) => {
 });
 
 // Установка вебхука
-app.get("/set-webhook", async (req, res) => {
+app.get("/api/set-webhook", async (req, res) => {
   try {
     const webhookUrl = `https://gift-backend-nine.vercel.app/api/telegram-webhook`;
     
@@ -208,7 +219,7 @@ app.get("/set-webhook", async (req, res) => {
 });
 
 // Информация о вебхуке
-app.get("/get-webhook-info", async (req, res) => {
+app.get("/api/get-webhook-info", async (req, res) => {
   try {
     const response = await fetch(
       `https://api.telegram.org/bot${process.env.TG_TOKEN}/getWebhookInfo`
@@ -344,10 +355,11 @@ app.get("/api/stats", async (req, res) => {
 
 // ============ TELEGRAM WEBHOOK ============
 
-app.post("/telegram-webhook", async (req, res) => {
+app.post("/api/telegram-webhook", async (req, res) => {
   try {
+    console.log("🤖 Telegram webhook получен!");
+    
     const update = req.body;
-    console.log("🤖 Telegram update получен");
     
     // Отвечаем сразу Telegram
     res.sendStatus(200);
@@ -369,6 +381,7 @@ app.post("/telegram-webhook", async (req, res) => {
     // Обработка /start
     if (update.message?.text === "/start") {
       const chatId = update.message.chat.id;
+      console.log(`👋 Новый пользователь: ${chatId}`);
       
       await sendTG(
         chatId,
@@ -403,13 +416,23 @@ app.post("/telegram-webhook", async (req, res) => {
       console.log(`🔘 Callback от ${tgId}: ${data}`);
       
       if (data === "STATS") {
-        const statsResponse = await fetch(`https://gift-backend-nine.vercel.app/api/stats`);
-        const stats = await statsResponse.json();
+        // Получаем статистику напрямую из базы
+        const { count: normal_left } = await supabase
+          .from("gifts")
+          .select("*", { count: "exact", head: true })
+          .eq("type", "normal")
+          .eq("status", "free");
+        
+        const { data: vip_used } = await supabase
+          .from("gifts")
+          .select("id")
+          .eq("type", "vip")
+          .eq("status", "used")
+          .limit(1);
         
         const text = `📊 <b>Статистика</b>
-🎁 Осталось ключей: <b>${stats.normal_left || 0}</b>
-💎 VIP-билет: ${stats.vip_found ? "❌ Найден" : "🎯 В игре"}
-🎫 Использовано ключей: <b>${stats.total_used || 0}</b>
+🎁 Осталось ключей: <b>${normal_left || 0}</b>
+💎 VIP-билет: ${vip_used?.length > 0 ? "❌ Найден" : "🎯 В игре"}
 👇 Купи ключ - попробуй удачу!`;
         
         await sendTG(tgId, text, { parse_mode: "HTML" });
@@ -465,7 +488,7 @@ app.post("/telegram-webhook", async (req, res) => {
 });
 
 // Вебхук T-Bank
-app.post("/tbank-webhook", async (req, res) => {
+app.post("/api/tbank-webhook", async (req, res) => {
   try {
     console.log("💰 T-Bank webhook получен");
     const payment = req.body;
@@ -520,15 +543,24 @@ ${process.env.FRONTEND_URL || 'https://gift-backend-nine.vercel.app'}
   }
 });
 
-// 404 обработчик
-app.use((req, res) => {
+// Маршрут для главной страницы (редирект на index.html)
+app.get("/", (req, res) => {
+  res.redirect("/index.html");
+});
+
+// 404 обработчик для API
+app.use("/api/*", (req, res) => {
   res.status(404).json({
     ok: false,
-    error: "Маршрут не найден",
+    error: "API маршрут не найден",
     path: req.path,
-    method: req.method,
-    tip: "Попробуйте /test для проверки сервера"
+    method: req.method
   });
+});
+
+// 404 обработчик для статических файлов
+app.use((req, res) => {
+  res.status(404).sendFile(join(__dirname, '../public/404.html'));
 });
 
 // Экспорт для Vercel
