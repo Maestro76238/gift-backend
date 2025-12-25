@@ -8,7 +8,6 @@ import { dirname, join } from 'path';
 
 const app = express();
 
-// Получаем текущую директорию
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -35,7 +34,6 @@ try {
 
 // ============ ФУНКЦИИ ============
 
-// Отправка в Telegram
 async function sendTG(chatId, text, options = {}) {
   try {
     const response = await fetch(
@@ -57,14 +55,12 @@ async function sendTG(chatId, text, options = {}) {
   }
 }
 
-// Уведомление админу
 async function notifyAdmin(text) {
   if (process.env.ADMIN_TG_ID) {
     await sendTG(process.env.ADMIN_TG_ID, text, { parse_mode: "HTML" });
   }
 }
 
-// Резервирование подарка
 async function reserveGift(tgUserId) {
   try {
     const { data: gift, error } = await supabase
@@ -94,7 +90,6 @@ async function reserveGift(tgUserId) {
   }
 }
 
-// Отмена резерва
 async function cancelReserve(giftId) {
   try {
     await supabase
@@ -112,7 +107,6 @@ async function cancelReserve(giftId) {
   }
 }
 
-// Создание платежа
 async function createTBankPayment(giftId, tgUserId) {
   const paymentId = "TBANK_" + Date.now();
   
@@ -138,12 +132,21 @@ async function createTBankPayment(giftId, tgUserId) {
 
 // ============ МАРШРУТЫ API ============
 
-// Главная страница (редирект на сайт)
 app.get("/", (req, res) => {
   res.redirect("/index.html");
 });
 
-// Проверка кода
+// Тестовый маршрут для проверки сервера
+app.get("/api/test", (req, res) => {
+  console.log("✅ Тестовый запрос получен");
+  res.json({ 
+    ok: true, 
+    message: "Сервер работает",
+    time: new Date().toISOString(),
+    webhook_url: "https://gift-backend-nine.vercel.app/api/telegram-webhook"
+  });
+});
+
 app.get("/api/check-gift/:code", async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
@@ -177,7 +180,6 @@ app.get("/api/check-gift/:code", async (req, res) => {
   }
 });
 
-// Активация кода
 app.post("/api/use-gift/:code", async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
@@ -207,7 +209,6 @@ app.post("/api/use-gift/:code", async (req, res) => {
   }
 });
 
-// Статистика
 app.get("/api/stats", async (req, res) => {
   try {
     const { count: normal_left } = await supabase
@@ -242,14 +243,23 @@ app.get("/api/stats", async (req, res) => {
 
 app.post("/api/telegram-webhook", async (req, res) => {
   try {
+    console.log("=".repeat(50));
+    console.log("🤖 TELEGRAM WEBHOOK ПОЛУЧЕН!");
+    console.log("Время:", new Date().toISOString());
+    console.log("Тело запроса:", JSON.stringify(req.body, null, 2));
+    console.log("=".repeat(50));
+    
     const update = req.body;
     
-    // Отвечаем сразу
+    // Отвечаем СРАЗУ
     res.sendStatus(200);
     
     if (update.message?.text === "/start") {
-      await sendTG(
-        update.message.chat.id,
+      const chatId = update.message.chat.id;
+      console.log(`👋 /start от ${chatId}`);
+      
+      const result = await sendTG(
+        chatId,
         `🎁 <b>НОВОГОДНЯЯ ИГРА 2026</b>
 🎯 Купи ключ - получи подарок
 💰 Шанс выиграть 100 000 ₽
@@ -257,7 +267,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 <b>Цена:</b> 100 ₽ за ключ
 <b>Возраст:</b> от 14 лет
 <b>Возврат:</b> не предусмотрен
-👇 Нажмите кнопку ниже, чтобы купить ключ:`,
+👇 Нажмите кнопку ниже:`,
         {
           parse_mode: "HTML",
           reply_markup: {
@@ -269,12 +279,16 @@ app.post("/api/telegram-webhook", async (req, res) => {
           },
         }
       );
+      
+      console.log("📤 Результат отправки:", result.ok ? "УСПЕХ" : "ОШИБКА");
       return;
     }
     
     if (update.callback_query) {
       const tgId = update.callback_query.from.id;
       const data = update.callback_query.data;
+      
+      console.log(`🔘 Callback от ${tgId}: ${data}`);
       
       // Ответ на callback
       await fetch(
@@ -314,10 +328,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
         await sendTG(
           tgId,
           `💳 <b>Оплатите 100 ₽</b>
-После оплаты вы получите:
-✅ Уникальный код для проверки на сайте
-🎁 Цифровой подарок
-🎯 Шанс на VIP-билет и 100 000 ₽
+После оплаты вы получите код!
 <b>Возраст:</b> от 14 лет
 <b>Возврат:</b> не предусмотрен
 👇 Нажмите для оплаты:`,
@@ -325,7 +336,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
             parse_mode: "HTML",
             reply_markup: {
               inline_keyboard: [
-                [{ text: "💳 ОПЛАТИТЬ 100 ₽ (T-Банк)", url: payment.confirmation.confirmation_url }],
+                [{ text: "💳 ОПЛАТИТЬ 100 ₽", url: payment.confirmation.confirmation_url }],
                 [{ text: "❌ ОТМЕНА", callback_data: `CANCEL:${gift.id}` }],
               ],
             },
@@ -350,6 +361,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 // Вебхук T-Bank
 app.post("/api/tbank-webhook", async (req, res) => {
   try {
+    console.log("💰 T-Bank webhook получен");
     const payment = req.body;
     
     if (payment.status === "success") {
@@ -372,15 +384,13 @@ app.post("/api/tbank-webhook", async (req, res) => {
             tgUserId,
             `🎉 <b>Оплата прошла успешно!</b>
 🔑 <b>Ваш код:</b> <code>${gift.code}</code>
-👇 Перейдите на сайт и введите этот код:
-${process.env.FRONTEND_URL}
-🎁 Вы получите цифровой подарок сразу после проверки кода!`,
+👇 Проверьте код на сайте!`,
             {
               parse_mode: "HTML",
               reply_markup: {
                 inline_keyboard: [[
                   {
-                    text: "🔍 ПРОВЕРИТЬ КОД НА САЙТЕ",
+                    text: "🔍 ПРОВЕРИТЬ КОД",
                     url: process.env.FRONTEND_URL,
                   },
                 ]],
@@ -402,11 +412,19 @@ ${process.env.FRONTEND_URL}
   }
 });
 
-// Установка вебхука
-app.get("/api/set-webhook", async (req, res) => {
+// Управление вебхуком
+app.get("/api/webhook/set", async (req, res) => {
   try {
-    const webhookUrl = `${process.env.FRONTEND_URL}/api/telegram-webhook`;
+    const webhookUrl = `https://gift-backend-nine.vercel.app/api/telegram-webhook`;
     
+    // Сначала удаляем старый
+    await fetch(`https://api.telegram.org/bot${process.env.TG_TOKEN}/deleteWebhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ drop_pending_updates: true }),
+    });
+    
+    // Устанавливаем новый
     const response = await fetch(
       `https://api.telegram.org/bot${process.env.TG_TOKEN}/setWebhook`,
       {
@@ -414,6 +432,7 @@ app.get("/api/set-webhook", async (req, res) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: webhookUrl,
+          max_connections: 40,
           drop_pending_updates: true,
           allowed_updates: ["message", "callback_query"]
         }),
@@ -425,24 +444,36 @@ app.get("/api/set-webhook", async (req, res) => {
     res.json({ 
       ok: true,
       result,
-      webhookUrl
+      webhookUrl,
+      note: "Вебхук переустановлен. Теперь отправь /start боту."
     });
     
   } catch (e) {
-    console.error("Set webhook error:", e);
+    console.error("Webhook error:", e);
     res.json({ ok: false, error: e.message });
   }
 });
 
-// Keep-alive для Vercel
+app.get("/api/webhook/info", async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${process.env.TG_TOKEN}/getWebhookInfo`
+    );
+    const result = await response.json();
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Keep-alive
 app.get("/api/keep-alive", (req, res) => {
   res.json({ status: "alive", time: new Date().toISOString() });
 });
 
 // Keep-alive интервал
 setInterval(() => {
-  fetch(`${process.env.FRONTEND_URL}/api/keep-alive`).catch(() => {});
+  fetch(`https://gift-backend-nine.vercel.app/api/keep-alive`).catch(() => {});
 }, 4 * 60 * 1000);
 
-// Экспорт
 export default app;
