@@ -13,17 +13,17 @@ const __dirname = dirname(__filename);
 app.use(express.json());
 app.use(express.static(join(__dirname, '../public')));
 
-console.log("⚡ Бот запущен с супер-агрессивным keep-alive (1 секунда)");
+console.log("⚡ Бот запущен");
 
 // ============ КОНФИГ ============
 const CONFIG = {
   TG_TOKEN: process.env.TG_TOKEN,
   ADMIN_ID: process.env.ADMIN_TG_ID,
-  PROJECT: "gift-backend-nine",
+  PROJECT: "gift-backend",
   FRONTEND_URL: process.env.FRONTEND_URL || "https://gift-backend-nine.vercel.app",
   
-  // СУПЕР-АГРЕССИВНЫЙ KEEP-ALIVE - 1 СЕКУНДА!
-  KEEP_ALIVE_INTERVAL: 1 * 1000,
+  // УМЕРЕННЫЙ KEEP-ALIVE
+  KEEP_ALIVE_INTERVAL: 30 * 1000, // 30 секунд
   
   RATE_LIMIT: {
     MESSAGES_PER_MINUTE: 5,
@@ -33,61 +33,41 @@ const CONFIG = {
   }
 };
 
-// ============ СУПЕР-АГРЕССИВНЫЙ KEEP-ALIVE ============
-
-console.log(`🫀 Keep-alive: ${CONFIG.KEEP_ALIVE_INTERVAL}ms (60 запросов/мин)`);
+// ============ УМЕРЕННЫЙ KEEP-ALIVE ============
+console.log(`🫀 Keep-alive: ${CONFIG.KEEP_ALIVE_INTERVAL}ms`);
 
 let keepAliveCounter = 0;
-const keepAliveEndpoints = ['/api/ping', '/api/stats', '/', '/health', '/api/health-check'];
+const keepAliveEndpoints = ['/api/ping', '/api/stats', '/', '/health'];
 
-// Быстрый старт - первые 15 запросов
-console.log("🚀 Быстрый старт: 15 запросов сразу");
-for (let i = 0; i < 15; i++) {
-  setTimeout(() => {
-    const endpoint = keepAliveEndpoints[i % keepAliveEndpoints.length];
-    fetch(`${CONFIG.FRONTEND_URL}${endpoint}`, {
-      signal: AbortSignal.timeout(1000)
-    })
-    .then(() => {
-      if (i < 5) console.log(`🚀 Стартовый запрос ${i + 1}/15: ${endpoint}`);
-    })
-    .catch(() => {});
-  }, i * 200);
-}
-
-// Основной keep-alive каждую секунду
 const keepAliveInterval = setInterval(() => {
   keepAliveCounter++;
   const endpoint = keepAliveEndpoints[keepAliveCounter % keepAliveEndpoints.length];
   const startTime = Date.now();
   
   fetch(`${CONFIG.FRONTEND_URL}${endpoint}`, {
-    signal: AbortSignal.timeout(1500)
+    signal: AbortSignal.timeout(5000)
   })
   .then(response => {
     const time = Date.now() - startTime;
-    // Логируем только каждый 30-й запрос (раз в 30 секунд)
-    if (keepAliveCounter % 30 === 0) {
+    if (keepAliveCounter % 20 === 0) {
       console.log(`🫀 Keep-alive #${keepAliveCounter}: ${time}ms (${endpoint})`);
     }
   })
   .catch(() => {
-    if (keepAliveCounter % 10 === 0) {
+    if (keepAliveCounter % 40 === 0) {
       console.log(`⚠️ Keep-alive #${keepAliveCounter} пропущен`);
     }
   });
 }, CONFIG.KEEP_ALIVE_INTERVAL);
 
-// Очистка при завершении
 process.on('SIGTERM', () => {
   clearInterval(keepAliveInterval);
   console.log("🛑 Keep-alive остановлен");
 });
 
 // ============ ПРОВЕРКА ПОДКЛЮЧЕНИЙ ============
-
 let supabase = null;
-let dbStatus = { connected: false, error: null, table: 'gifts' };
+let dbStatus = { connected: false, error: null };
 let telegramStatus = { connected: false, error: null };
 
 async function checkSupabase() {
@@ -101,18 +81,13 @@ async function checkSupabase() {
     
     const { data, error } = await supabase
       .from('gifts')
-      .select('id, code, type, status, is_used')
+      .select('id, code')
       .limit(1);
     
     if (error) {
       dbStatus = { connected: false, error: error.message };
     } else {
-      dbStatus = { 
-        connected: true, 
-        table: 'gifts',
-        columns: ['id', 'code', 'type', 'status', 'reserved', 'reserved_at', 'tg_user_id', 'payment_id', 'is_used', 'used_at', 'created_at'],
-        sample: data?.[0] || 'нет данных'
-      };
+      dbStatus = { connected: true };
     }
   } catch (error) {
     dbStatus = { connected: false, error: error.message };
@@ -149,6 +124,9 @@ async function checkTelegram() {
 
 (async () => {
   await Promise.all([checkSupabase(), checkTelegram()]);
+  console.log("✅ Проверка подключений завершена");
+  console.log(`📊 База данных: ${dbStatus.connected ? '✅ подключена' : '❌ ошибка'}`);
+  console.log(`🤖 Telegram: ${telegramStatus.connected ? '✅ подключен (@' + telegramStatus.bot + ')' : '❌ ошибка'}`);
 })();
 
 // ============ СИСТЕМА ЗАЩИТЫ ============
@@ -212,9 +190,11 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // ============ ФУНКЦИИ ДЛЯ БД ============
-
 async function reserveGiftForUser(tgUserId) {
-  if (!dbStatus.connected || !supabase) return null;
+  if (!dbStatus.connected || !supabase) {
+    console.log("❌ Не могу зарезервировать подарок: БД не подключена");
+    return null;
+  }
   
   try {
     const { data: gift, error } = await supabase
@@ -225,7 +205,10 @@ async function reserveGiftForUser(tgUserId) {
       .limit(1)
       .single();
     
-    if (error || !gift) return null;
+    if (error || !gift) {
+      console.log("❌ Нет свободных подарков или ошибка:", error?.message);
+      return null;
+    }
     
     const { error: updateError } = await supabase
       .from('gifts')
@@ -237,11 +220,16 @@ async function reserveGiftForUser(tgUserId) {
       })
       .eq('id', gift.id);
     
-    if (updateError) return null;
+    if (updateError) {
+      console.log("❌ Ошибка обновления подарка:", updateError.message);
+      return null;
+    }
     
+    console.log(`✅ Подарок ${gift.code} зарезервирован для пользователя ${tgUserId}`);
     return gift;
     
   } catch (error) {
+    console.log("❌ Ошибка резервирования:", error.message);
     return null;
   }
 }
@@ -305,9 +293,11 @@ async function checkGiftCode(code) {
 }
 
 // ============ ОБЩИЕ ФУНКЦИИ ============
-
 function sendInstant(chatId, text, options = {}) {
-  if (!telegramStatus.connected) return;
+  if (!telegramStatus.connected) {
+    console.log("❌ Не могу отправить сообщение: Telegram не подключен");
+    return;
+  }
   
   const message = {
     chat_id: chatId,
@@ -319,8 +309,17 @@ function sendInstant(chatId, text, options = {}) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(message),
-    signal: AbortSignal.timeout(3000)
-  }).catch(() => {});
+    signal: AbortSignal.timeout(5000)
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (!data.ok) {
+      console.log(`❌ Ошибка отправки в Telegram: ${data.description}`);
+    }
+  })
+  .catch(error => {
+    console.log(`❌ Ошибка сети при отправке в Telegram: ${error.message}`);
+  });
 }
 
 function answerCallbackFast(callbackId, text = "", showAlert = false) {
@@ -334,31 +333,30 @@ function answerCallbackFast(callbackId, text = "", showAlert = false) {
       text: text,
       show_alert: showAlert
     }),
-    signal: AbortSignal.timeout(2000)
+    signal: AbortSignal.timeout(3000)
   }).catch(() => {});
 }
 
 // ============ МАРШРУТЫ ============
-
-// Основной ping для keep-alive
 app.get("/api/ping", (req, res) => {
   res.json({ 
     status: "alive", 
     project: CONFIG.PROJECT,
-    keep_alive: "1s",
+    keep_alive: "30s",
     timestamp: Date.now(),
     uptime: process.uptime().toFixed(2) + "s",
-    requests: keepAliveCounter
+    requests: keepAliveCounter,
+    db_connected: dbStatus.connected,
+    tg_connected: telegramStatus.connected
   });
 });
 
-// Health check для внешних сервисов
 app.get("/health", (req, res) => {
   res.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    keep_alive: "1s",
+    keep_alive: "30s",
     project: CONFIG.PROJECT
   });
 });
@@ -372,10 +370,25 @@ app.get("/api/health-check", (req, res) => {
   });
 });
 
-// Telegram вебхук
+// ============ TELEGRAM WEBHOOK ============
+app.get("/api/telegram-webhook", (req, res) => {
+  console.log("📡 GET-запрос на /api/telegram-webhook");
+  res.json({
+    status: "active",
+    service: "Telegram Webhook Endpoint",
+    bot: telegramStatus.connected ? `@${telegramStatus.bot}` : "unknown",
+    method: "GET received, use POST for Telegram updates",
+    webhook_url: `${CONFIG.FRONTEND_URL}/api/telegram-webhook`,
+    timestamp: new Date().toISOString(),
+    instructions: "Этот endpoint принимает POST-запросы от Telegram Bot API"
+  });
+});
+
 app.post("/api/telegram-webhook", async (req, res) => {
+  console.log("📨 Входящий POST-запрос от Telegram");
+  
   const clientIP = req.headers['x-forwarded-for'] || req.ip || 'unknown';
-  res.sendStatus(200);
+  res.sendStatus(200); // Важно: отвечаем сразу Telegram
   
   const update = req.body;
   const requestId = Date.now();
@@ -383,9 +396,15 @@ app.post("/api/telegram-webhook", async (req, res) => {
   if (update.message?.text === "/start") {
     const chatId = update.message.chat.id;
     const userId = update.message.from.id;
+    const username = update.message.from.username || `user_${userId}`;
+    
+    console.log(`👤 Пользователь ${username} (${userId}) отправил /start`);
     
     const ipCheck = checkIPRateLimit(clientIP);
-    if (!ipCheck.allowed) return;
+    if (!ipCheck.allowed) {
+      console.log(`🚫 IP ${clientIP} в кулдауне`);
+      return;
+    }
     
     const userCheck = checkUserRateLimit(userId, 'message');
     if (!userCheck.allowed) {
@@ -394,6 +413,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
           parse_mode: "HTML"
         });
       }
+      console.log(`🚫 Пользователь ${userId} превысил лимит: ${userCheck.reason}`);
       return;
     }
     
@@ -408,7 +428,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
 ${dbStatusText}
 🌐 Сайт: ${CONFIG.FRONTEND_URL}
 🔒 Защита от флуда: активна
-🫀 Keep-alive: 1 секунда
+🫀 Keep-alive: 30 секунд
 
 🎯 Купи ключ - получи подарок
 💰 Шанс на 100 000 ₽
@@ -439,6 +459,8 @@ ${dbStatusText}
     const data = update.callback_query.data;
     const parts = data.split('_');
     const action = parts[0];
+    
+    console.log(`🖱️ Callback от пользователя ${userId}: ${action}`);
     
     const ipCheck = checkIPRateLimit(clientIP);
     if (!ipCheck.allowed) {
@@ -511,7 +533,6 @@ ${dbStatusText}
   }
 });
 
-// API для сайта
 app.get("/api/stats", async (req, res) => {
   const stats = await getStatsFromDB();
   
@@ -520,7 +541,7 @@ app.get("/api/stats", async (req, res) => {
     site_url: CONFIG.FRONTEND_URL,
     check_url: `${CONFIG.FRONTEND_URL}/check.html`,
     timestamp: new Date().toISOString(),
-    keep_alive: "1s",
+    keep_alive: "30s",
     keep_alive_requests: keepAliveCounter
   });
 });
@@ -580,7 +601,6 @@ app.post("/api/use-gift/:code", async (req, res) => {
   }
 });
 
-// Статус системы
 app.get("/api/status", async (req, res) => {
   await Promise.all([checkSupabase(), checkTelegram()]);
   
@@ -592,7 +612,7 @@ app.get("/api/status", async (req, res) => {
     
     database: {
       connected: dbStatus.connected,
-      table: dbStatus.table,
+      table: 'gifts',
       stats: stats
     },
     
@@ -608,7 +628,7 @@ app.get("/api/status", async (req, res) => {
     },
     
     keep_alive: {
-      interval: "1s",
+      interval: "30s",
       requests: keepAliveCounter,
       endpoints: keepAliveEndpoints
     },
@@ -621,9 +641,23 @@ app.get("/api/status", async (req, res) => {
   });
 });
 
-// Главная
 app.get("/", (req, res) => {
   res.redirect("/index.html");
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: "Не найдено", path: req.path });
+});
+
+app.use((err, req, res, next) => {
+  console.error("❌ Ошибка сервера:", err);
+  res.status(500).json({ error: "Внутренняя ошибка сервера" });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Сервер запущен на порту ${PORT}`);
+  console.log(`🌐 Frontend URL: ${CONFIG.FRONTEND_URL}`);
 });
 
 export default app;
