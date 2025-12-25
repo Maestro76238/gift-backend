@@ -23,7 +23,7 @@ const CONFIG = {
   FRONTEND_URL: process.env.FRONTEND_URL || "https://gift-backend-nine.vercel.app",
   
   // АГРЕССИВНЫЙ KEEP-ALIVE
-  KEEP_ALIVE_INTERVAL: 5 * 1000, // 10 секунд!
+  KEEP_ALIVE_INTERVAL: 5 * 1000, // 5 секунд!
   
   RATE_LIMIT: {
     MESSAGES_PER_MINUTE: 5,
@@ -484,7 +484,7 @@ app.get("/api/stats", async (req, res) => {
     site_url: CONFIG.FRONTEND_URL,
     check_url: `${CONFIG.FRONTEND_URL}/check.html`,
     timestamp: new Date().toISOString(),
-    keep_alive: "5s"
+    keep_alive: "10s"
   });
 });
 
