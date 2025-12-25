@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: gift-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node api/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
