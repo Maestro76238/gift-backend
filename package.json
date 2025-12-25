@@ -8,12 +8,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
     "express": "^4.22.1",
     "node-fetch": "^3.3.2"
   },
   "engines": {
-    "node": "24.x"
+    "node": ">=18"
   }
 }
