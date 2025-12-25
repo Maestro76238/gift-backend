@@ -1,300 +1,448 @@
 ﻿import express from "express";
 import fetch from "node-fetch";
+import 'dotenv/config';
+import { createClient } from "@supabase/supabase-js";
+import cors from "cors";
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const app = express();
 
-// Оптимизированный middleware
-app.use(express.json({ limit: '10kb' }));
-app.use((req, res, next) => {
-  res.set('X-Response-Time', 'fast');
-  next();
-});
+// Получаем текущую директорию
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-console.log("⚡ Ультра-быстрый бот запущен!");
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-// ============ КОНФИГУРАЦИЯ ============
-const CONFIG = {
-  TG_TOKEN: process.env.TG_TOKEN,
-  ADMIN_ID: process.env.ADMIN_TG_ID,
-  FRONTEND_URL: process.env.FRONTEND_URL || 'https://gift-backend-nine.vercel.app',
-  KEEP_ALIVE_INTERVAL: 4 * 60 * 1000, // 4 минуты
-  REQUEST_TIMEOUT: 2500, // 2.5 секунды
-};
+// Обслуживание статических файлов
+app.use(express.static(join(__dirname, '../public')));
 
-// ============ КЕШ И СОСТОЯНИЕ ============
-const state = {
-  statsCache: { normal_left: 2, vip_found: false, timestamp: 0 },
-  lastRequests: new Map(),
-  isReady: false
-};
+console.log("🚀 Сервер запущен!");
 
-// ============ KEEP-ALIVE СИСТЕМА ============
-function startKeepAlive() {
-  // Первый пинг сразу
-  setTimeout(() => {
-    fetch(`${CONFIG.FRONTEND_URL}/api/health`).catch(() => {});
-    console.log('🫀 Initial keep-alive sent');
-    state.isReady = true;
-  }, 1000);
-
-  // Регулярные пинги
-  setInterval(() => {
-    fetch(`${CONFIG.FRONTEND_URL}/api/health`).catch(() => {});
-  }, CONFIG.KEEP_ALIVE_INTERVAL);
+// ============ ИНИЦИАЛИЗАЦИЯ ============
+let supabase;
+try {
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  );
+  console.log("✅ Supabase подключен");
+} catch (error) {
+  console.error("❌ Ошибка Supabase:", error);
 }
 
-// ============ БЫСТРЫЕ ФУНКЦИИ ============
+// ============ ФУНКЦИИ ============
 
-// Супер-быстрая отправка в Telegram
-async function sendFast(chatId, text, options = {}) {
-  const url = `https://api.telegram.org/bot${CONFIG.TG_TOKEN}/sendMessage`;
-  const body = JSON.stringify({ chat_id: chatId, text, ...options });
-  
-  // Не ждем ответа!
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-    signal: AbortSignal.timeout(CONFIG.REQUEST_TIMEOUT)
-  }).catch(() => {}); // Игнорируем все ошибки
-  
-  return { ok: true }; // Всегда возвращаем успех
+// Отправка в Telegram
+async function sendTG(chatId, text, options = {}) {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${process.env.TG_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          ...options,
+        }),
+      }
+    );
+    return await response.json();
+  } catch (error) {
+    console.error("❌ Ошибка отправки в TG:", error);
+    return { ok: false };
+  }
 }
 
-// Быстрый ответ на callback
-function answerCallback(callbackId) {
-  fetch(`https://api.telegram.org/bot${CONFIG.TG_TOKEN}/answerCallbackQuery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callback_query_id: callbackId }),
-    signal: AbortSignal.timeout(1000)
-  }).catch(() => {});
+// Уведомление админу
+async function notifyAdmin(text) {
+  if (process.env.ADMIN_TG_ID) {
+    await sendTG(process.env.ADMIN_TG_ID, text, { parse_mode: "HTML" });
+  }
 }
 
-// ============ ОБРАБОТЧИКИ ============
+// Резервирование подарка
+async function reserveGift(tgUserId) {
+  try {
+    const { data: gift, error } = await supabase
+      .from("gifts")
+      .select("*")
+      .eq("status", "free")
+      .eq("type", "normal")
+      .limit(1)
+      .single();
+    
+    if (error || !gift) return null;
+    
+    await supabase
+      .from("gifts")
+      .update({
+        status: "reserved",
+        reserved: true,
+        reserved_at: new Date().toISOString(),
+        tg_user_id: tgUserId,
+      })
+      .eq("id", gift.id);
+    
+    return gift;
+  } catch (error) {
+    console.error("❌ Ошибка резервирования:", error);
+    return null;
+  }
+}
 
-// Telegram вебхук - САМЫЙ БЫСТРЫЙ
-app.post("/api/telegram-webhook", (req, res) => {
-  const requestId = Date.now();
-  const startTime = Date.now();
+// Отмена резерва
+async function cancelReserve(giftId) {
+  try {
+    await supabase
+      .from("gifts")
+      .update({
+        status: "free",
+        reserved: false,
+        reserved_at: null,
+        tg_user_id: null,
+        payment_id: null,
+      })
+      .eq("id", giftId);
+  } catch (error) {
+    console.error("❌ Ошибка отмены резерва:", error);
+  }
+}
+
+// Создание платежа
+async function createTBankPayment(giftId, tgUserId) {
+  const paymentId = "TBANK_" + Date.now();
   
-  // 🔥 ОТВЕЧАЕМ СРАЗУ!
-  res.sendStatus(200);
-  
-  const update = req.body;
-  state.lastRequests.set(requestId, { startTime, type: 'telegram' });
-  
-  // Очистка старых записей
-  if (state.lastRequests.size > 100) {
-    const keys = Array.from(state.lastRequests.keys()).slice(0, 50);
-    keys.forEach(key => state.lastRequests.delete(key));
+  try {
+    await supabase
+      .from("gifts")
+      .update({
+        payment_id: paymentId,
+        status: "waiting_payment",
+      })
+      .eq("id", giftId);
+  } catch (error) {
+    console.error("❌ Ошибка создания платежа:", error);
   }
   
-  // 📨 Обработка сообщений
-  if (update.message?.text === "/start") {
-    const chatId = update.message.chat.id;
+  return {
+    id: paymentId,
+    confirmation: {
+      confirmation_url: "https://t.me/gift_celler_bot"
+    }
+  };
+}
+
+// ============ МАРШРУТЫ API ============
+
+// Главная страница (редирект на сайт)
+app.get("/", (req, res) => {
+  res.redirect("/index.html");
+});
+
+// Проверка кода
+app.get("/api/check-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
     
-    sendFast(chatId, 
-`🎁 <b>НОВОГОДНЯЯ ИГРА 2026</b>
-
-⚡ <b>БЫСТРЫЙ ОТВЕТ!</b>
-⏱️ Сервер ответил за ${Date.now() - startTime}мс
-
-🎯 Купи ключ за 100₽
-💰 Шанс на 100 000₽
-⏳ Розыгрыш 31 декабря
-
-👇 Выберите действие:`, {
-      parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "🎯 КУПИТЬ КЛЮЧ", callback_data: "BUY" }],
-          [{ text: "📊 СТАТИСТИКА", callback_data: "STATS" }],
-          [{ text: "🔍 ПРОВЕРИТЬ КОД", url: `${CONFIG.FRONTEND_URL}/check.html` }]
-        ]
-      }
+    const { data, error } = await supabase
+      .from("gifts")
+      .select("id, code, type")
+      .eq("code", code)
+      .eq("status", "paid")
+      .eq("is_used", false)
+      .limit(1)
+      .maybeSingle();
+    
+    if (error || !data) {
+      return res.status(404).json({
+        ok: false,
+        message: "Код не найден или уже использован",
+      });
+    }
+    
+    await notifyAdmin(`🔍 Код проверен: ${code}`);
+    
+    return res.json({
+      ok: true,
+      gift: data,
     });
     
-    // Логируем в консоль
-    console.log(`🚀 /start обработан за ${Date.now() - startTime}мс`);
+  } catch (error) {
+    console.error("❌ Ошибка проверки кода:", error);
+    res.status(500).json({ ok: false, error: "Ошибка сервера" });
   }
-  
-  // 🔘 Обработка callback
-  if (update.callback_query) {
-    const callbackId = update.callback_query.id;
-    const chatId = update.callback_query.from.id;
-    const data = update.callback_query.data;
-    
-    // Быстрый ответ на callback
-    answerCallback(callbackId);
-    
-    if (data === "STATS") {
-      const stats = state.statsCache;
-      sendFast(chatId,
-`📊 <b>СТАТИСТИКА В РЕАЛЬНОМ ВРЕМЕНИ</b>
+});
 
-🎁 Осталось ключей: <b>${stats.normal_left}</b>
-💎 VIP-билет: ${stats.vip_found ? "❌ НАЙДЕН" : "🎯 В ИГРЕ"}
-⚡ Ответ сервера: ${Date.now() - startTime}мс
-
-👇 Успей купить ключ!`, {
-        parse_mode: "HTML"
-      });
+// Активация кода
+app.post("/api/use-gift/:code", async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+    
+    const { data: gift } = await supabase
+      .from("gifts")
+      .update({
+        is_used: true,
+        used_at: new Date().toISOString(),
+      })
+      .eq("code", code)
+      .eq("is_used", false)
+      .select()
+      .maybeSingle();
+    
+    if (!gift) {
+      return res.status(400).json({ ok: false });
     }
     
-    if (data === "BUY") {
-      sendFast(chatId,
-`💳 <b>ОПЛАТА 100 ₽</b>
+    await notifyAdmin(`🎁 Код активирован: ${code}`);
+    
+    return res.json({ ok: true });
+    
+  } catch (error) {
+    console.error("❌ Ошибка активации:", error);
+    res.status(500).json({ ok: false, error: "Ошибка сервера" });
+  }
+});
 
-✅ Гарантированный подарок
-🎯 Шанс на VIP-билет
-💰 Участие в розыгрыше 100К
+// Статистика
+app.get("/api/stats", async (req, res) => {
+  try {
+    const { count: normal_left } = await supabase
+      .from("gifts")
+      .select("*", { count: "exact", head: true })
+      .eq("type", "normal")
+      .eq("status", "free");
+    
+    const { data: vip_used } = await supabase
+      .from("gifts")
+      .select("id")
+      .eq("type", "vip")
+      .eq("status", "used")
+      .limit(1);
+    
+    return res.json({
+      normal_left: normal_left || 0,
+      vip_found: vip_used?.length > 0,
+    });
+    
+  } catch (error) {
+    console.error("❌ Ошибка статистики:", error);
+    res.json({
+      normal_left: 0,
+      vip_found: false,
+      error: "Ошибка базы данных"
+    });
+  }
+});
 
-👇 Нажмите для оплаты:`, {
-        parse_mode: "HTML",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "💳 ОПЛАТИТЬ (T-Банк)", url: "https://t.me/gift_celler_bot" }],
-            [{ text: "📋 ПРАВИЛА", callback_data: "RULES" }]
-          ]
+// ============ TELEGRAM WEBHOOK ============
+
+app.post("/api/telegram-webhook", async (req, res) => {
+  try {
+    const update = req.body;
+    
+    // Отвечаем сразу
+    res.sendStatus(200);
+    
+    if (update.message?.text === "/start") {
+      await sendTG(
+        update.message.chat.id,
+        `🎁 <b>НОВОГОДНЯЯ ИГРА 2026</b>
+🎯 Купи ключ - получи подарок
+💰 Шанс выиграть 100 000 ₽
+⏳ Розыгрыш 31 декабря
+<b>Цена:</b> 100 ₽ за ключ
+<b>Возраст:</b> от 14 лет
+<b>Возврат:</b> не предусмотрен
+👇 Нажмите кнопку ниже, чтобы купить ключ:`,
+        {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "🎯 КУПИТЬ КЛЮЧ ЗА 100 ₽", callback_data: "BUY_KEY" }],
+              [{ text: "📊 Статистика", callback_data: "STATS" }],
+              [{ text: "❓ FAQ", url: "https://telegra.ph/FAQ-12-16-21" }],
+            ],
+          },
         }
-      });
+      );
+      return;
     }
     
-    if (data === "RULES") {
-      sendFast(chatId,
-`📋 <b>ПРАВИЛА ИГРЫ</b>
-
-1. 🎁 Каждый ключ = подарок
-2. 💰 Главный приз: 100 000₽
-3. ⏳ Розыгрыш: 31 декабря
-4. ✅ Возврат: 24 часа
-5. 🔞 Участие: 18+
-
-Вопросы: avitopochta17@gmail.com`, {
-        parse_mode: "HTML"
-      });
+    if (update.callback_query) {
+      const tgId = update.callback_query.from.id;
+      const data = update.callback_query.data;
+      
+      // Ответ на callback
+      await fetch(
+        `https://api.telegram.org/bot${process.env.TG_TOKEN}/answerCallbackQuery`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callback_query_id: update.callback_query.id,
+          }),
+        }
+      );
+      
+      if (data === "STATS") {
+        const statsResponse = await fetch(`https://gift-backend-nine.vercel.app/api/stats`);
+        const stats = await statsResponse.json();
+        
+        const text = `📊 <b>Статистика</b>
+🎁 Осталось ключей: <b>${stats.normal_left || 0}</b>
+💎 VIP-билет: ${stats.vip_found ? "❌ Найден" : "🎯 В игре"}
+👇 Купи ключ - попробуй удачу!`;
+        
+        await sendTG(tgId, text, { parse_mode: "HTML" });
+        return;
+      }
+      
+      if (data === "BUY_KEY") {
+        const gift = await reserveGift(tgId);
+        
+        if (!gift) {
+          await sendTG(tgId, "❌ К сожалению, ключи закончились");
+          return;
+        }
+        
+        const payment = await createTBankPayment(gift.id, tgId);
+        
+        await sendTG(
+          tgId,
+          `💳 <b>Оплатите 100 ₽</b>
+После оплаты вы получите:
+✅ Уникальный код для проверки на сайте
+🎁 Цифровой подарок
+🎯 Шанс на VIP-билет и 100 000 ₽
+<b>Возраст:</b> от 14 лет
+<b>Возврат:</b> не предусмотрен
+👇 Нажмите для оплаты:`,
+          {
+            parse_mode: "HTML",
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "💳 ОПЛАТИТЬ 100 ₽ (T-Банк)", url: payment.confirmation.confirmation_url }],
+                [{ text: "❌ ОТМЕНА", callback_data: `CANCEL:${gift.id}` }],
+              ],
+            },
+          }
+        );
+        return;
+      }
+      
+      if (data.startsWith("CANCEL:")) {
+        const giftId = data.split(":")[1];
+        await cancelReserve(giftId);
+        await sendTG(tgId, "❌ Покупка отменена");
+        return;
+      }
     }
+    
+  } catch (e) {
+    console.error("❌ TG ERROR:", e);
   }
 });
 
-// ============ API МАРШРУТЫ ============
-
-// Здоровье (самый быстрый)
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ultra_fast",
-    ready: state.isReady,
-    requests: state.lastRequests.size,
-    memory: process.memoryUsage().heapUsed / 1024 / 1024 + " MB",
-    timestamp: Date.now()
-  });
-});
-
-// Пинг (для теста скорости)
-app.get("/api/ping", (req, res) => {
-  res.json({ pong: Date.now() });
-});
-
-// Статистика (кешированная)
-app.get("/api/stats", (req, res) => {
-  // Обновляем кеш если старый
-  if (Date.now() - state.statsCache.timestamp > 30000) {
-    state.statsCache.timestamp = Date.now();
+// Вебхук T-Bank
+app.post("/api/tbank-webhook", async (req, res) => {
+  try {
+    const payment = req.body;
+    
+    if (payment.status === "success") {
+      const giftId = payment.metadata?.gift_id;
+      const tgUserId = payment.metadata?.tg_user_id;
+      
+      if (giftId && tgUserId) {
+        const { data: gift } = await supabase
+          .from("gifts")
+          .update({
+            status: "paid",
+            reserved: false,
+          })
+          .eq("id", giftId)
+          .select("*")
+          .single();
+        
+        if (gift) {
+          await sendTG(
+            tgUserId,
+            `🎉 <b>Оплата прошла успешно!</b>
+🔑 <b>Ваш код:</b> <code>${gift.code}</code>
+👇 Перейдите на сайт и введите этот код:
+${process.env.FRONTEND_URL}
+🎁 Вы получите цифровой подарок сразу после проверки кода!`,
+            {
+              parse_mode: "HTML",
+              reply_markup: {
+                inline_keyboard: [[
+                  {
+                    text: "🔍 ПРОВЕРИТЬ КОД НА САЙТЕ",
+                    url: process.env.FRONTEND_URL,
+                  },
+                ]],
+              },
+            }
+          );
+          
+          await notifyAdmin(
+            `💰 <b>Новая оплата</b>\nКод: ${gift.code}\nTG ID: ${tgUserId}`
+          );
+        }
+      }
+    }
+    
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("❌ T-Bank error:", e);
+    res.sendStatus(200);
   }
-  
-  res.json({
-    ...state.statsCache,
-    cached: Date.now() - state.statsCache.timestamp < 30000,
-    response_time: "instant"
-  });
-});
-
-// Проверка кода (упрощенная)
-app.get("/api/check-gift/:code", (req, res) => {
-  const code = req.params.code.toUpperCase();
-  
-  // Всегда успешный ответ для теста
-  res.json({
-    ok: true,
-    code: code,
-    gift: {
-      type: Math.random() > 0.9 ? "vip" : "normal",
-      status: "valid"
-    },
-    server: "ultra_fast",
-    note: "Реальная проверка подключится позже"
-  });
 });
 
 // Установка вебхука
-app.get("/api/setup", async (req, res) => {
+app.get("/api/set-webhook", async (req, res) => {
   try {
-    const webhookUrl = `${CONFIG.FRONTEND_URL}/api/telegram-webhook`;
+    const webhookUrl = `${process.env.FRONTEND_URL}/api/telegram-webhook`;
+    
     const response = await fetch(
-      `https://api.telegram.org/bot${CONFIG.TG_TOKEN}/setWebhook`,
+      `https://api.telegram.org/bot${process.env.TG_TOKEN}/setWebhook`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: webhookUrl,
-          max_connections: 100,
-          drop_pending_updates: true
+          drop_pending_updates: true,
+          allowed_updates: ["message", "callback_query"]
         }),
-        signal: AbortSignal.timeout(3000)
       }
     );
     
     const result = await response.json();
     
-    res.json({
-      success: result.ok,
-      webhook: webhookUrl,
-      speed: "optimized",
-      keep_alive: "enabled",
-      note: "Бот готов к быстрой работе!"
+    res.json({ 
+      ok: true,
+      result,
+      webhookUrl
     });
     
-  } catch (error) {
-    res.json({ error: error.message });
+  } catch (e) {
+    console.error("Set webhook error:", e);
+    res.json({ ok: false, error: e.message });
   }
 });
 
-// Главная страница
-app.get("/", (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>🎄 Новогодний Бот</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
-        body { font-family: Arial; text-align: center; padding: 50px; background: #0a0a2a; color: white; }
-        h1 { color: #FFD700; }
-        .status { background: rgba(0,255,0,0.1); padding: 20px; border-radius: 10px; margin: 20px; }
-        .links a { display: inline-block; margin: 10px; padding: 10px 20px; background: #FFD700; color: black; text-decoration: none; border-radius: 5px; }
-      </style>
-    </head>
-    <body>
-      <h1>🎁 Новогодний Gift Bot</h1>
-      <div class="status">
-        <h2>✅ СЕРВЕР РАБОТАЕТ</h2>
-        <p>⚡ Ультра-быстрая версия</p>
-        <p>🫀 Keep-alive включен</p>
-        <p>📨 Вебхук: ${state.isReady ? 'Готов' : 'Запускается...'}</p>
-      </div>
-      <div class="links">
-        <a href="/api/health">Проверка здоровья</a>
-        <a href="/api/setup">Установить вебхук</a>
-        <a href="/check.html">Проверить код</a>
-      </div>
-    </body>
-    </html>
-  `);
+// Keep-alive для Vercel
+app.get("/api/keep-alive", (req, res) => {
+  res.json({ status: "alive", time: new Date().toISOString() });
 });
 
-// Запуск keep-alive
-startKeepAlive();
+// Keep-alive интервал
+setInterval(() => {
+  fetch(`${process.env.FRONTEND_URL}/api/keep-alive`).catch(() => {});
+}, 4 * 60 * 1000);
 
 // Экспорт
 export default app;
