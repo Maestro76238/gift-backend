@@ -2,9 +2,9 @@
   "name": "gift-backend",
   "version": "1.0.0",
   "type": "module",
-  "main": "api/server.js",
   "scripts": {
-    "start": "node api/server.js"
+    "start": "node api/server.js",
+    "dev": "node api/server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
