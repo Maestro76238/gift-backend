@@ -514,9 +514,7 @@ async function handleStartCommand(chatId, userId, username) {
 `🎁 <b>НОВОГОДНЯЯ ИГРА 2026</b>
 
 ${dbStatusText}
-🌐 Сайт: ${CONFIG.FRONTEND_URL}${environmentInfo}
 🔒 Защита от флуда: активна
-🫀 Keep-alive: ${CONFIG.IS_RENDER ? "10 минут" : "30 секунд"}
 
 🎯 Купи ключ - получи подарок
 💰 Шанс на 100 000 ₽
@@ -595,11 +593,7 @@ async function handleStatsCallback(chatId, userId) {
     statsText += `🎁 Всего подарков: <b>${stats.total_gifts || 0}</b>\n`;
     statsText += `🎁 Свободных ключей: <b>${stats.normal_left || 0}</b>\n`;
     statsText += `💎 VIP-билет: ${stats.vip_found ? "🎯 В игре" : "❌ Не найден"}\n`;
-    statsText += `🫀 Keep-alive запросов: <b>${keepAliveCounter}</b>\n`;
-    statsText += `☁️ Хостинг: <b>Render.com</b>`;
   }
-  
-  statsText += `\n🌐 Проверить код: ${CONFIG.FRONTEND_URL}/check.html`;
   
   sendInstant(chatId, statsText, { parse_mode: "HTML" });
 }
