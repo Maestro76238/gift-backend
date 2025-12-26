@@ -1,4 +1,5 @@
-﻿import express from "express";
+﻿// Удаляем BOM символ в начале файла
+import express from "express";
 import fetch from "node-fetch";
 import 'dotenv/config';
 import { createClient } from "@supabase/supabase-js";
